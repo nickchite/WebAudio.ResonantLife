@@ -31,13 +31,14 @@ function tick() {
   setTimeout(tick, 10);
 }
 
+
 document.querySelector("button").onclick = () => {
   document.body.style.backgroundColor = randomRGB();
   context.resume();
 }
 
 document.querySelector("#gain").oninput = (event) => {
-  gain.gain.value = event.target.value;
+  master.gain.value = event.target.value;
 }
 
 const N = 10;
@@ -79,24 +80,27 @@ const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
 const osc_gains = Array.from({ length: N }, () => new GainNode(context));
 const delay = new DelayNode(context);
 const fb = new GainNode(context);
-const gain = new GainNode(context);
+const master = new GainNode(context);
 
-gain.gain.value = 0.5;
+master.gain.value = 0.5;
 fb.gain.value = 0;
 
-fb.gain.value = 0.92;
-delay.delayTime.value = 3000/1e6;
+fb.gain.value = 0.90;
+delay.delayTime.value = 0.1;
 
 oscs.forEach((osc, i) => {
   osc.frequency.value = randFreq();
   const osc_gain = osc_gains[i];
   osc_gain.gain.value = randGain() / Math.sqrt(N);
-  osc.connect(osc_gain).connect(delay);
+  osc.connect(osc_gain);
+  osc_gain.connect(delay);
+  osc_gain.connect(master);
   osc.nextTick = osc.context.currentTime;
   osc.start();
 });
+delay.connect(master);
+noise.connect(noise_hp).connect(noise_gain).connect(master);
 delay.connect(fb).connect(delay);
-delay.connect(gain);
-gain.connect(context.destination);
+master.connect(context.destination);
 
 tick()
