@@ -6,8 +6,8 @@ function randomRGB() {
 }
 
 function randFreq() {
-  const min = 60;
-  const max = 600;
+  const min = 40;
+  const max = 1280;
   return min * Math.pow(max / min, Math.random());
 }
 
@@ -17,9 +17,15 @@ function randGain() {
   return min * Math.pow(max / min, Math.random());
 }
 
+function randDT() {
+  const min = 0.050;
+  const max = 0.500;
+  return min * Math.pow(max / min, Math.random());
+}
+
 function tick() {
   oscs.forEach((osc, i) => {
-    const osc_gain = osc_gains[i];
+    const osc_gain = gains[i];
     if (osc.context.currentTime > osc.nextTick) {
       const delay = -Math.log(1 - Math.random())
       osc.nextTick = osc.context.currentTime + delay;
@@ -77,30 +83,37 @@ noise_lfo_constant.connect(noise_hp.frequency);
 noise_lfo_gain.connect(noise_hp.frequency);
 
 const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
-const osc_gains = Array.from({ length: N }, () => new GainNode(context));
-const delay = new DelayNode(context);
-const fb = new GainNode(context);
+const gains = Array.from({ length: N }, () => new GainNode(context));
+const delays = Array.from({ length: N }, () => new DelayNode(context));
+const fbs = Array.from({ length: N }, () => new GainNode(context));
 const master = new GainNode(context);
 
 master.gain.value = 0.5;
-fb.gain.value = 0;
 
-fb.gain.value = 0.90;
-delay.delayTime.value = 0.1;
-
-oscs.forEach((osc, i) => {
+for (let i = 0; i < N; ++i) {
+  const osc = oscs[i];
   osc.frequency.value = randFreq();
-  const osc_gain = osc_gains[i];
-  osc_gain.gain.value = randGain() / Math.sqrt(N);
-  osc.connect(osc_gain);
-  osc_gain.connect(delay);
-  osc_gain.connect(master);
+
+  const gain = gains[i];
+  gain.gain.value = randGain() / Math.sqrt(N);
+
+  const delay = delays[i];
+  delay.delayTime.value = 0.100; //randDT();
+  
+  const fb = fbs[i];
+  fb.gain.value = 0.6 + 0.35 * Math.random();
+
+  osc.connect(gain);
+  gain.connect(delay);
+  delay.connect(fb).connect(delay);
+  delay.connect(master);
+  gain.connect(master);
+
   osc.nextTick = osc.context.currentTime;
   osc.start();
-});
-delay.connect(master);
+
+}
 noise.connect(noise_hp).connect(noise_gain).connect(master);
-delay.connect(fb).connect(delay);
 master.connect(context.destination);
 
 tick()
