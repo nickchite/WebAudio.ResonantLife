@@ -44,6 +44,37 @@ const N = 10;
 
 const context = new AudioContext();
 
+// https://noisehack.com/generate-noise-web-audio-api/
+const bufferSize = 4096;
+const noise = context.createScriptProcessor(bufferSize, 1, 1);
+noise.onaudioprocess = function(e) {
+    var output = e.outputBuffer.getChannelData(0);
+    for (var i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+    }
+}
+
+const noise_gain = new GainNode(context);
+noise_gain.gain.value = 1e-2;
+
+const noise_lfo = new OscillatorNode(context);
+noise_lfo.frequency.value = 0.2;
+noise_lfo.start()
+
+const noise_lfo_gain = new GainNode(context);
+noise_lfo_gain.gain.value = 1000;
+noise_lfo.connect(noise_lfo_gain);
+
+const noise_lfo_constant = new ConstantSourceNode(context);
+noise_lfo_constant.offset.value = 10500;
+noise_lfo_constant.start()
+
+const noise_hp = new BiquadFilterNode(context);
+noise_hp.type = "highpass"
+
+noise_lfo_constant.connect(noise_hp.frequency);
+noise_lfo_gain.connect(noise_hp.frequency);
+
 const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
 const osc_gains = Array.from({ length: N }, () => new GainNode(context));
 const delay = new DelayNode(context);
