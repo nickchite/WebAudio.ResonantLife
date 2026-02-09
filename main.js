@@ -44,7 +44,7 @@ document.querySelector("button").onclick = () => {
 }
 
 document.querySelector("#gain").oninput = (event) => {
-  master.gain.value = event.target.value;
+  master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010);
 }
 
 const N = 10;
@@ -88,7 +88,7 @@ const delays = Array.from({ length: N }, () => new DelayNode(context));
 const fbs = Array.from({ length: N }, () => new GainNode(context));
 const master = new GainNode(context);
 
-master.gain.value = 0.5;
+master.gain.value = 0;
 
 for (let i = 0; i < N; ++i) {
   const osc = oscs[i];
