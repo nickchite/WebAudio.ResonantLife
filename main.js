@@ -5,12 +5,25 @@ function randomRGB() {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function linScale(min, max, value) { return min + (max - min) * value; }
-function expScale(min, max, value) { return min * Math.pow(max / min, value); }
+function linlin(value, inMin, inMax, outMin, outMax) {
+  return outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);
+}
 
-function randFreq() { return expScale(40, 1280, Math.random()); }
-function randGain() { return expScale(1e-3, 1, Math.random()); }
-function randDT() { return expScale(0.001, 0.500, Math.random()); }
+function linexp(value, inMin, inMax, outMin, outMax) {
+  return outMin * Math.pow(outMax / outMin, (value - inMin) / (inMax - inMin));
+}
+
+function explin(value, inMin, inMax, outMin, outMax) {
+  return inMin * Math.pow(inMax / inMin, (value - outMin) / (outMax - outMin));
+}
+
+function expexp(value, inMin, inMax, outMin, outMax) {
+  return outMin * Math.pow(outMax / outMin, (value - inMin) / (inMax - inMin));
+}
+
+function randFreq() { return linexp(Math.random(), 0, 1, 40, 1280); }
+function randGain() { return linexp(Math.random(), 0, 1, 0.001, 1); }
+function randDT() { return linexp(Math.random(), 0, 1, 0.001, 0.500); }
 
 function tick() {
   oscs.forEach((osc, i) => {
