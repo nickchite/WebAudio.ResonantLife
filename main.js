@@ -5,23 +5,12 @@ function randomRGB() {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function randFreq() {
-  const min = 40;
-  const max = 1280;
-  return min * Math.pow(max / min, Math.random());
-}
+function linScale(min, max, value) { return min + (max - min) * value; }
+function expScale(min, max, value) { return min * Math.pow(max / min, value); }
 
-function randGain() {
-  const min = 1e-3;
-  const max = 1;
-  return min * Math.pow(max / min, Math.random());
-}
-
-function randDT() {
-  const min = 0.050;
-  const max = 0.500;
-  return min * Math.pow(max / min, Math.random());
-}
+function randFreq() { return expScale(40, 1280, Math.random()); }
+function randGain() { return expScale(1e-3, 1, Math.random()); }
+function randDT() { return expScale(0.001, 0.500, Math.random()); }
 
 function tick() {
   oscs.forEach((osc, i) => {
