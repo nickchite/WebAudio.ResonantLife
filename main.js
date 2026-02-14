@@ -26,19 +26,45 @@ function randGain() { return linexp(Math.random(), 0, 1, 0.001, 1); }
 function randDT() { return linexp(Math.random(), 0, 1, 0.001, 0.500); }
 
 function tick() {
-  oscs.forEach((osc, i) => {
-    const osc_gain = gains[i];
-    if (osc.context.currentTime > osc.nextTick) {
-      const delay = -Math.log(1 - Math.random())
-      osc.nextTick = osc.context.currentTime + delay;
-      osc.frequency.setValueAtTime(randFreq(), osc.nextTick);
-      osc_gain.gain.exponentialRampToValueAtTime(randGain() / Math.sqrt(N), osc.nextTick);
+  voices.forEach((voice) => {
+    if (voice.osc.context.currentTime > voice.osc.nextTick) {
+      const dt = -Math.log(1 - Math.random())
+      voice.osc.nextTick = voice.osc.context.currentTime + dt;
+      voice.osc.frequency.setValueAtTime(randFreq(), voice.osc.nextTick);
+      voice.gain.gain.exponentialRampToValueAtTime(randGain() / Math.sqrt(N), voice.osc.nextTick);
     }
   });
   
   setTimeout(tick, 10);
 }
 
+class Voice {
+  constructor(context) {
+    this.osc = new OscillatorNode(context);
+    this.gain = new GainNode(context);
+    
+    this.osc.connect(this.gain);
+  }
+  
+  connect(destination) {
+    this.gain.connect(destination);
+    return destination;
+  }
+}
+
+class EchoDelay {
+  constructor(context) {
+    this.delay = new DelayNode(context);
+    this.fb = new GainNode(context);
+
+    this.delay.connect(this.fb).connect(this.delay);
+  }
+  
+  connect(destination) {
+    this.delay.connect(destination);
+    return destination;
+  }
+}
 
 document.querySelector("button").onclick = () => {
   document.body.style.backgroundColor = randomRGB();
@@ -84,37 +110,32 @@ noise_hp.type = "highpass"
 noise_lfo_constant.connect(noise_hp.frequency);
 noise_lfo_gain.connect(noise_hp.frequency);
 
-const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
-const gains = Array.from({ length: N }, () => new GainNode(context));
-const delays = Array.from({ length: N }, () => new DelayNode(context));
-const fbs = Array.from({ length: N }, () => new GainNode(context));
+// const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
+// const gains = Array.from({ length: N }, () => new GainNode(context));
+// const delays = Array.from({ length: N }, () => new DelayNode(context));
+// const fbs = Array.from({ length: N }, () => new GainNode(context));
+const voices = Array.from({ length: N }, () => new Voice(context));
+const delays = Array.from({ length: N }, () => new EchoDelay(context));
 const master = new GainNode(context);
 
 master.gain.value = 0;
 
 for (let i = 0; i < N; ++i) {
-  const osc = oscs[i];
-  osc.frequency.value = randFreq();
-
-  const gain = gains[i];
-  gain.gain.value = randGain() / Math.sqrt(N);
+  const voice = voices[i];
+  voice.osc.frequency.value = randFreq();
+  voice.gain.gain.value = randGain() / Math.sqrt(N);
 
   const delay = delays[i];
-  delay.delayTime.value = 0.100; //randDT();
+  delay.delay.delayTime.value = 0.100; //randDT(); 
+  delay.fb.gain.value = 0.6 + 0.35 * Math.random();
   
-  const fb = fbs[i];
-  fb.gain.value = 0.6 + 0.35 * Math.random();
-
-  osc.connect(gain);
-  gain.connect(delay);
-  delay.connect(fb).connect(delay);
-  delay.connect(master);
-  gain.connect(master);
-
-  osc.nextTick = osc.context.currentTime;
-  osc.start();
+  voice.connect(delay.delay).connect(master);
+  
+  voice.osc.nextTick = voice.osc.context.currentTime;
+  voice.osc.start();
 
 }
+
 noise.connect(noise_hp).connect(noise_gain).connect(master);
 master.connect(context.destination);
 
