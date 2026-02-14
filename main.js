@@ -1,4 +1,4 @@
-import { randomRGB, linexp, Voice, EchoDelay } from "./lib.js";
+import { randomRGB, linexp, Voice, EchoDelay, Scaler } from "./lib.js";
 
 function randFreq() { return linexp(Math.random(), 0, 1, 40, 1280); }
 function randGain() { return linexp(Math.random(), 0, 1, 0.001, 1); }
@@ -26,9 +26,12 @@ document.querySelector("#gain").oninput = (event) => {
   master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010);
 }
 
-const N = 10;
-
 const context = new AudioContext();
+
+const master = new GainNode(context);
+master.connect(context.destination);
+
+const N = 10;
 
 // https://noisehack.com/generate-noise-web-audio-api/
 const bufferSize = 4096;
@@ -53,13 +56,8 @@ noise_lfo.start()
 const noise_scaler = new Scaler(context, -1, 1, 100, 12000);
 noise_lfo.connect(noise_scaler.a).connect(noise_hp.frequency);
 
-// const oscs = Array.from({ length: N }, () => new OscillatorNode(context));
-// const gains = Array.from({ length: N }, () => new GainNode(context));
-// const delays = Array.from({ length: N }, () => new DelayNode(context));
-// const fbs = Array.from({ length: N }, () => new GainNode(context));
 const voices = Array.from({ length: N }, () => new Voice(context));
 const delays = Array.from({ length: N }, () => new EchoDelay(context));
-const master = new GainNode(context);
 
 master.gain.value = 0;
 
@@ -80,6 +78,5 @@ for (let i = 0; i < N; ++i) {
 }
 
 noise.connect(noise_hp).connect(noise_gain).connect(master);
-master.connect(context.destination);
 
 tick()
