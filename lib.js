@@ -48,3 +48,25 @@ export class EchoDelay {
     return destination;
   }
 }
+
+export class Scaler {
+  constructor(context, inMin, inMax, outMin, outMax) {
+    this.inMin = inMin;
+    this.inMax = inMax;
+    this.outMin = outMin;
+    this.outMax = outMax;
+
+    this.a = new GainNode(context);
+    this.b = new ConstantSourceNode(context);
+    
+    this.a.gain.value = (outMax - outMin) / (inMax - inMin);
+    this.b.offset.value = (outMin - inMin * this.a.gain.value) / this.a.gain.value;
+      
+    this.b.connect(this.a);
+  }
+  
+  connect(destination) {
+    this.a.connect(destination);
+    return destination;
+  }
+}
