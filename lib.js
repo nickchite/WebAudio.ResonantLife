@@ -70,3 +70,26 @@ export class Scaler {
     return destination;
   }
 }
+
+export class Noise {
+  constructor(context) {
+    this.noise = context.createScriptProcessor(this.bufferSize, 1, 1);
+    this.gain = new GainNode(context, { gain: 1e-2 });
+
+    // https://noisehack.com/generate-noise-web-audio-api
+    const bufferSize = 4096;
+    this.noise.onaudioprocess = (e) => {
+      var output = e.outputBuffer.getChannelData(0);
+      for (var i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+      }
+    }
+    
+    this.noise.connect(this.gain);
+  }
+  
+  connect(destination) {
+    this.gain.connect(destination);
+    return destination;
+  }
+}
