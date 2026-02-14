@@ -1,25 +1,4 @@
-function randomRGB() {
-  const r = Math.floor(Math.random() * 256);
-  const g = Math.floor(Math.random() * 256);
-  const b = Math.floor(Math.random() * 256);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-function linlin(value, inMin, inMax, outMin, outMax) {
-  return outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);
-}
-
-function linexp(value, inMin, inMax, outMin, outMax) {
-  return outMin * Math.pow(outMax / outMin, (value - inMin) / (inMax - inMin));
-}
-
-function explin(value, inMin, inMax, outMin, outMax) {
-  return inMin * Math.pow(inMax / inMin, (value - outMin) / (outMax - outMin));
-}
-
-function expexp(value, inMin, inMax, outMin, outMax) {
-  return outMin * Math.pow(outMax / outMin, (value - inMin) / (inMax - inMin));
-}
+import { randomRGB, linexp, Voice, EchoDelay } from "./lib.js";
 
 function randFreq() { return linexp(Math.random(), 0, 1, 40, 1280); }
 function randGain() { return linexp(Math.random(), 0, 1, 0.001, 1); }
@@ -36,34 +15,6 @@ function tick() {
   });
   
   setTimeout(tick, 10);
-}
-
-class Voice {
-  constructor(context) {
-    this.osc = new OscillatorNode(context);
-    this.gain = new GainNode(context);
-    
-    this.osc.connect(this.gain);
-  }
-  
-  connect(destination) {
-    this.gain.connect(destination);
-    return destination;
-  }
-}
-
-class EchoDelay {
-  constructor(context) {
-    this.delay = new DelayNode(context);
-    this.fb = new GainNode(context);
-
-    this.delay.connect(this.fb).connect(this.delay);
-  }
-  
-  connect(destination) {
-    this.delay.connect(destination);
-    return destination;
-  }
 }
 
 document.querySelector("button").onclick = () => {
