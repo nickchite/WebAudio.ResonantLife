@@ -31,7 +31,7 @@ const context = new AudioContext();
 const master = new GainNode(context, { gain: 0 });
 master.connect(context.destination);
 
-const N = 2;
+const N = 5;
 
 const noise = new Noise(context);
 
@@ -40,7 +40,8 @@ const noise_lfo = new OscillatorNode(context, { type: "sine", frequency: 0.2 });
 noise_lfo.start()
 
 const noise_scaler = new Scaler(context, -1, 1, 100, 12000);
-noise_lfo.connect(noise_scaler.a).connect(noise_hp.frequency);
+noise_lfo.connect(noise_scaler.input())
+noise_scaler.output().connect(noise_hp.frequency);
 
 const voices = Array.from({ length: N }, () => new Voice(context));
 const delays = Array.from({ length: N }, () => new EchoDelay(context));
@@ -54,13 +55,13 @@ for (let i = 0; i < N; ++i) {
   delay.delay.delayTime.value = 0.100; //randDT(); 
   delay.fb.gain.value = 0.6 + 0.35 * Math.random();
   
-  voice.connect(delay.delay).connect(master);
+  voice.output().connect(delay.input());
+  delay.output().connect(master);
   
   voice.osc.nextTick = voice.osc.context.currentTime;
   voice.osc.start();
-
 }
 
-noise.connect(noise_hp).connect(master);
+noise.output().connect(noise_hp).connect(master);
 
 tick()
