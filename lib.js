@@ -21,6 +21,11 @@ export function expexp(value, inMin, inMax, outMin, outMax) {
   return outMin * Math.pow(outMax / outMin, (value - inMin) / (inMax - inMin));
 }
 
+export function amp_to_db(amp) { return 20 * Math.log10(amp); }
+export function db_to_amp(db) { return Math.pow(10, db / 20); }
+export function freq_to_midi(freq) { return 69 + 12 * Math.log2(freq / 440); }
+export function midi_to_freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
 export class Voice {
   constructor(context) {
     this.osc = new OscillatorNode(context);
