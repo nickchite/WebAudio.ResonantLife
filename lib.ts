@@ -115,16 +115,19 @@ export class Voice extends Node {
   output() { return this.gain; }
 }
 
-export class EchoDelay extends Node {
+export class DelayLine extends Node {
   delay: DelayNode;
-  fb: GainNode;
+  feedback: GainNode; 
+  feedforward: GainNode;
   
   constructor(ctx: AudioContext) {
     super(ctx);
     this.delay = new DelayNode(ctx);
-    this.fb = new GainNode(ctx);
+    this.feedback = new GainNode(ctx, { gain: 0 });
+    this.feedforward = new GainNode(ctx, { gain: 0 });
 
-    this.delay.connect(this.fb).connect(this.delay);
+    this.delay.connect(this.feedback).connect(this.delay);
+    this.delay.connect(this.feedforward);
   }
   
   input() { return this.delay; }

@@ -1,4 +1,4 @@
-import { randomRGB, linexp, Voice, EchoDelay, Scaler, Noise } from "./lib.js";
+import { randomRGB, linexp, Voice, DelayLine, Scaler, Noise } from "./lib.js";
 
 function randFreq() { return linexp(Math.random(), 0, 1, 40, 1280); }
 function randGain() { return linexp(Math.random(), 0, 1, 0.001, 1); }
@@ -44,7 +44,7 @@ noise_lfo.connect(noise_scaler.input())
 noise_scaler.output().connect(noise_hp.frequency);
 
 const voices = Array.from({ length: N }, () => new Voice(context));
-const delays = Array.from({ length: N }, () => new EchoDelay(context));
+const delays = Array.from({ length: N }, () => new DelayLine(context));
 
 for (let i = 0; i < N; ++i) {
   const voice = voices[i];
