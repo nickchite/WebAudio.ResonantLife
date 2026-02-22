@@ -87,12 +87,20 @@ export function midi_to_freq(midi: number) { return 440 * Math.pow(2, (midi - 69
 
 export abstract class Node {
   ctx: AudioContext;
+  nextTick: number;
   
-  constructor(ctx: AudioContext) { this.ctx = ctx; }
+  constructor(ctx: AudioContext, base?: any) { 
+    this.ctx = ctx;
+    this.nextTick = this.ctx.currentTime;
+  }
 
   connect(destination: Node): Node {
     this.output().connect(destination.input());
     return destination;
+  }
+  
+  update(delta?: any) {
+    this.nextTick = this.ctx.currentTime + delta.time;
   }
   
   abstract input(): AudioNode;
@@ -102,13 +110,27 @@ export abstract class Node {
 export class Voice extends Node {
   osc: OscillatorNode;
   gain: GainNode;
+  frequency: number;
   
-  constructor(ctx: AudioContext) {
+  constructor(ctx: AudioContext, base: any) {
     super(ctx);
     this.osc = new OscillatorNode(ctx);
     this.gain = new GainNode(ctx);
     
     this.osc.connect(this.gain);
+    
+    this.osc.frequency.value = this.frequency = base.frequency;
+    this.gain.gain.value = 0;
+    
+    this.osc.start();
+  }
+  
+  update(delta?: any) { 
+    if (this.ctx.currentTime > this.nextTick) {
+      super.update(delta);
+      this.osc.frequency.setValueAtTime(this.frequency * delta.freq, this.nextTick);
+      this.gain.gain.exponentialRampToValueAtTime(delta.gain, this.nextTick);
+    }
   }
   
   input() { return undefined; }
