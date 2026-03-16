@@ -1,4 +1,5 @@
-import { Random, linexp, Voice, DelayLine, Scaler, Noise, FormantVoice } from "./lib.js";
+<script setup lang="js">
+import { Random, linexp, Voice, DelayLine, Scaler, Noise, FormantVoice } from "./lib.ts";
 
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
@@ -17,20 +18,19 @@ function update() {
   });
 }
 
-document.querySelector("button").onclick = () => {
+function addVoice() {
   document.body.style.backgroundColor = Random.rgb();
-  context.resume();
-  
   const voice = new Voice(context, { frequency: randFreq() });
   voice.output().connect(delays[0].input());
   voices.push(voice);
-}
-
-document.querySelector("#gain").oninput = (event) => {
-  master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010);
+  console.log(voices)
 }
 
 const context = new AudioContext();
+
+function setMasterGain(event) {
+  master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010);
+}
 
 const master = new GainNode(context, { gain: 0 });
 master.connect(context.destination);
@@ -66,3 +66,11 @@ setInterval(update, CONTROL_TIME);
 // globalThis.formant = formant;
 
 // noise.output().connect(noise_hp).connect(master);
+</script>
+
+<template>
+  <h1>Resonant Life</h1>
+  <button id="resume" v-on:click="context.resume()">ctx.resume</button>
+  <button id="add" v-on:click="addVoice()">add voice</button>
+  <input id='gain' v-on:input="setMasterGain" type="range" min="0" max="1" step="0.001" value="0.5" />
+</template>
