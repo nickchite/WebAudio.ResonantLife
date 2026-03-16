@@ -1,8 +1,31 @@
-export function randomRGB() {
-  const r = Math.floor(Math.random() * 256);
-  const g = Math.floor(Math.random() * 256);
-  const b = Math.floor(Math.random() * 256);
-  return `rgb(${r}, ${g}, ${b})`;
+export class Random {
+  static linlin(inMin: number, inMax: number, outMin: number, outMax: number) {
+    return linlin(Math.random(), inMin, inMax, outMin, outMax);
+  }
+  
+  static linexp(inMin: number, inMax: number, outMin: number, outMax: number) {
+    return linexp(Math.random(), inMin, inMax, outMin, outMax);
+  }
+
+  static normal(mean = 0, std = 1) {
+    const u1 = Math.random();
+    const u2 = Math.random();
+
+    const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+
+    return z0 * std + mean;
+  }
+  
+  static rgb() {
+    const r = Math.floor(Math.random() * 256);
+    const g = Math.floor(Math.random() * 256);
+    const b = Math.floor(Math.random() * 256);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  
+  static exponential(lambda: number) {
+    return -Math.log(1 - Math.random()) / lambda;
+  }
 }
 
 /**
@@ -147,14 +170,42 @@ export class DelayLine extends Node {
     this.delay = new DelayNode(ctx);
     this.feedback = new GainNode(ctx, { gain: 0 });
     this.feedforward = new GainNode(ctx, { gain: 0 });
-
+    
     this.delay.connect(this.feedback).connect(this.delay);
     this.delay.connect(this.feedforward);
   }
   
   input() { return this.delay; }
   output() { return this.delay; }
-}  
+}
+
+
+export class FormantVoice extends Node {
+  osc: OscillatorNode;
+  gain: GainNode;
+  filters: BiquadFilterNode[];
+
+  constructor(ctx: AudioContext, formants: number[]) {
+    super(ctx);
+    this.osc = new OscillatorNode(ctx);
+    this.osc.type = "sawtooth";
+    this.osc.frequency.value = 600;
+    this.osc.start();
+
+    this.gain = new GainNode(ctx);
+    //this.gain.gain.value = randGain() / Math.sqrt(N);
+    this.gain.gain.value = 1;
+
+    this.filters = formants.map((f) => {
+      const filter = new BiquadFilterNode(ctx, { type: "bandpass", frequency: f, Q: 10 });
+      this.osc.connect(filter).connect(this.gain);
+      return filter;
+    });
+  }
+
+  input() { return undefined; }
+  output() { return this.gain; }
+}
 
 export class Scaler extends Node {
   gain: GainNode;
@@ -207,5 +258,106 @@ export class Noise extends Node {
   }
   
   input() { return undefined; }
+  output() { return this.gain; }
+}
+
+export class SoundFilePlayer extends Node {
+  source: AudioBufferSourceNode;
+
+  constructor(ctx: AudioContext) {
+    super(ctx);
+    this.source = new AudioBufferSourceNode(ctx);
+  }
+
+  async load(filename: string) {
+   this.source.buffer = await fetch(filename)
+      .then(file => file.arrayBuffer())
+      .then(buffer => this.ctx.decodeAudioData(buffer));
+  } 
+    
+  play() { this.source.start(); }
+  stop() { this.source.stop(); }
+  
+  input() { return undefined; }
+  output() { return this.source; }
+}
+
+class SoundIn extends Node {
+  source?: MediaStreamAudioSourceNode;
+
+  constructor(ctx: AudioContext) {
+    super(ctx);
+  }
+
+  async load() {
+    await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+      autoGainControl: false,
+      echoCancellation: false,
+      noiseSuppression: false,
+    })
+    .then((stream) => { this.source = new MediaStreamAudioSourceNode(this.ctx, { mediaStream: stream }); });
+  } 
+  
+  stop() { this.source?.disconnect(); }
+  
+  input() { return undefined; }
+  output() { return this.source; }
+}
+
+export class ConvolutionReverb extends Node {
+    convolver: ConvolverNode;
+
+    constructor(ctx: AudioContext) {
+      super(ctx);
+      this.convolver = new ConvolverNode(ctx);
+    }
+    
+    load(filename: string) {
+        fetch(filename)
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => this.ctx.decodeAudioData(arrayBuffer))
+            .then(audioBuffer => { this.convolver.buffer = audioBuffer; })
+            .catch(error => console.error('Error loading impulse response:', error));
+    }
+    
+    input() { return this.convolver; }
+    output() { return this.convolver; }
+}
+
+export class ADSR extends Node {
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+  gain: GainNode;
+
+  constructor(ctx: AudioContext, attack: number, decay: number, sustain: number, release: number) {
+    super(ctx);
+    this.attack = attack;
+    this.decay = decay;
+    this.sustain = sustain;
+    this.release = release;
+    
+    this.gain = new GainNode(this.ctx, { gain: 0 });
+  }
+  
+  start() {
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(0, now);
+    this.gain.gain.linearRampToValueAtTime(1, now + this.attack);
+    this.gain.gain.linearRampToValueAtTime(this.sustain, now + this.attack + this.decay);
+  }
+
+  stop() {
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
+    this.gain.gain.linearRampToValueAtTime(0, now + this.release);
+  }
+  
+  input() { return this.gain; }
   output() { return this.gain; }
 }
