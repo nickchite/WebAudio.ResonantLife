@@ -29,7 +29,7 @@ function addVoice() {
 const context = new AudioContext();
 
 function setMasterGain(event) {
-  master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010);
+  
 }
 
 const master = new GainNode(context, { gain: 0 });
@@ -70,7 +70,9 @@ setInterval(update, CONTROL_TIME);
 
 <template>
   <h1>Resonant Life</h1>
-  <button id="resume" v-on:click="context.resume()">ctx.resume</button>
-  <button id="add" v-on:click="addVoice()">add voice</button>
-  <input id='gain' v-on:input="setMasterGain" type="range" min="0" max="1" step="0.001" value="0.5" />
+  <button id="resume" @click="context.resume()">ctx.resume</button>
+  <button id="add" @click="addVoice()">add voice</button>
+  <input id='gain' @input="event => master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010)"
+    type="range" min="0" max="1" step="0.001" value="0.5"
+  />
 </template>
