@@ -35,16 +35,6 @@ function setMasterGain(event) {
 const master = new GainNode(context, { gain: 0 });
 master.connect(context.destination);
 
-/* const noise = new Noise(context);
-
-const noise_hp = new BiquadFilterNode(context, { type: "highpass", frequency: 100 });
-const noise_lfo = new OscillatorNode(context, { type: "sine", frequency: 0.2 });
-noise_lfo.start()
-
-const noise_scaler = new Scaler(context, -1, 1, 100, 12000);
-noise_lfo.connect(noise_scaler.input())
-noise_scaler.output().connect(noise_hp.frequency); */
-
 const voices = [];
 const delays = [];
 
@@ -53,19 +43,6 @@ delay.output().connect(master);
 delays.push(delay);
 
 setInterval(update, CONTROL_TIME);
-
-// const A_formant_freqs = [730, 1090, 2440];
-// const E_formant_freqs = [660, 1700, 2400];
-// const I_formant_freqs = [440, 1220, 2600];
-// const O_formant_freqs = [360, 750, 2400];
-// const U_formant_freqs = [270, 600, 2400];
-
-// const formant = new FormantVoice(context, I_formant_freqs);
-// formant.output().connect(delays[0].input());
-// formant.osc.nextTick = formant.osc.context.currentTime;
-// globalThis.formant = formant;
-
-// noise.output().connect(noise_hp).connect(master);
 </script>
 
 <template>
