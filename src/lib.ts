@@ -111,15 +111,27 @@ export function midi_to_freq(midi: number) { return 440 * Math.pow(2, (midi - 69
 export abstract class Node {
   ctx: AudioContext;
   nextTick: number;
+  base: any;
+  fanIn: number = 0;
+  fanGain: GainNode;
   
   constructor(ctx: AudioContext, base?: any) { 
     this.ctx = ctx;
     this.nextTick = this.ctx.currentTime;
+    this.base = base;
+    this.fanGain = new GainNode(ctx, { gain: 1 });
   }
 
   connect(destination: Node): Node {
     this.output().connect(destination.input());
+    destination.fanGain.gain.value = 1 / ++destination.fanIn;
     return destination;
+  }
+
+  disconnect(destination: Node): void {
+    this.output().disconnect(destination.fanGain);
+    destination.fanGain.gain.value = 1 / Math.max(1, --destination.fanIn);
+    return undefined;
   }
   
   update(delta?: any) {
@@ -133,16 +145,15 @@ export abstract class Node {
 export class Voice extends Node {
   osc: OscillatorNode;
   gain: GainNode;
-  frequency: number;
   
   constructor(ctx: AudioContext, base: any) {
-    super(ctx);
+    super(ctx, base);
     this.osc = new OscillatorNode(ctx);
     this.gain = new GainNode(ctx);
     
     this.osc.connect(this.gain);
     
-    this.osc.frequency.value = this.frequency = base.frequency;
+    this.osc.frequency.value = base.frequency;
     this.gain.gain.value = 0;
     
     this.osc.start();
@@ -151,7 +162,7 @@ export class Voice extends Node {
   update(delta?: any) { 
     if (this.ctx.currentTime > this.nextTick) {
       super.update(delta);
-      this.osc.frequency.setValueAtTime(this.frequency * delta.freq, this.nextTick);
+      this.osc.frequency.setValueAtTime(this.base.frequency * delta.freq, this.nextTick);
       this.gain.gain.exponentialRampToValueAtTime(delta.gain, this.nextTick);
     }
   }
@@ -160,23 +171,46 @@ export class Voice extends Node {
   output() { return this.gain; }
 }
 
-export class DelayLine extends Node {
+export class Space extends Node {
   delay: DelayNode;
   feedback: GainNode; 
   feedforward: GainNode;
   
-  constructor(ctx: AudioContext) {
-    super(ctx);
-    this.delay = new DelayNode(ctx);
-    this.feedback = new GainNode(ctx, { gain: 0 });
+  constructor(ctx: AudioContext, base: any) {
+    super(ctx, base);
+    this.delay = new DelayNode(ctx, { maxDelayTime: 3 });
+    this.feedback = new GainNode(ctx, { gain: 0.8 });
     this.feedforward = new GainNode(ctx, { gain: 0 });
+
+    this.delay.delayTime.value = base.delayTime;
     
+    this.fanGain.connect(this.delay);
     this.delay.connect(this.feedback).connect(this.delay);
     this.delay.connect(this.feedforward);
   }
   
-  input() { return this.delay; }
+  update(delta?: any) {
+    if (this.ctx.currentTime > this.nextTick) {
+      super.update(delta);
+      this.delay.delayTime.setValueAtTime(this.base.delayTime * delta.dt, this.nextTick);
+    }
+  }
+  
+  input() { return this.fanGain; }
   output() { return this.delay; }
+}
+
+export class Output extends Node {
+  master: GainNode;
+
+  constructor(ctx: AudioContext) {
+    super(ctx);
+    this.master = new GainNode(ctx);
+    this.fanGain.connect(this.master).connect(this.ctx.destination);
+  }
+  
+  input() { return this.fanGain; }
+  output() { return undefined; }
 }
 
 

@@ -1,12 +1,31 @@
 <script setup lang="js">
-import { Random, linexp, Voice, DelayLine, Scaler, Noise, FormantVoice } from "./lib.ts";
+
+import { ref } from 'vue'
+import { Random, linexp, Voice, Space, Output } from "./lib.ts";
+import Flow from './components/Flow.vue'
+import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
+
+
+const flow = ref(null);
 
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 
-function randFreq() { return Random.linexp(0, 1, 200, 1600); }
-function randGain() { return Random.linexp(0, 1, 0.1, 1); }
-function randDT() { return Random.linexp(0, 1, 0.001, 0.500); }
+const context = new AudioContext();
+const output = new Output(context);
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (context && context.state !== 'closed') {
+      context.close();
+      console.log('Audio Context Closed');
+    }
+  });
+}
+
+function randFreq() { return Random.linexp(0, 1, 60, 8000); }
+function randGain() { return Random.linexp(0, 1, 0.01, 1); }
+function randDT() { return Random.linexp(0, 1, 0.25, 2); }
 
 function update() {
   voices.forEach((voice) => {
@@ -18,29 +37,76 @@ function update() {
   });
 }
 
-function addVoice() {
-  document.body.style.backgroundColor = Random.rgb();
-  const voice = new Voice(context, { frequency: randFreq() });
-  voice.output().connect(delays[0].input());
-  voices.push(voice);
-  console.log(voices)
-}
+function addNode(type/*: 'voice' | 'space'*/) {
+  const idx = type === 'voice' ? voices.length : spaces.length;
+  const id = `${type}-${idx}`;
 
-const context = new AudioContext();
+  let node;
+  if (type === 'voice') {
+    node = new Voice(context, { frequency: randFreq() });
+    voices.push(node);
+  } else if (type === 'space') {
+    node = new Space(context, { delayTime: randDT() });
+    node.connect(output);
 
-function setMasterGain(event) {
+    spaces.push(node);
+  }
+
+  flow.value.graph.set(id, node);
+
+  const position = getSpawnPosition(type);
+  flow.value.addNodes({
+    id,
+    type,
+    position,
+    data: {
+      label: id,
+      node: node,
+    }
+  });
   
+  console.log('added node', id, node);
 }
 
-const master = new GainNode(context, { gain: 0 });
-master.connect(context.destination);
+function getSpawnPosition(type) {
+  return {
+    x: (type === 'voice' ? 100 : 200) + Math.random() * 200,
+    y: 50 + Math.random() * 500,
+  }
+}
+
+function connect(source, target) {
+  const src = flow.value.graph.get(source)
+  const tgt = flow.value.graph.get(target)
+  
+  console.log(`connecting ${source} to ${target}`, src, tgt);
+
+  if (!src || !tgt) return
+
+  try {
+    src.connect(tgt)
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+function disconnect(source, target) {
+  const src = flow.value.graph.get(source)
+  const tgt = flow.value.graph.get(target)
+
+  console.log(`disconnecting ${source} from ${target}`, src, tgt);
+
+  if (!src || !tgt) return
+
+  try {
+    src.disconnect(tgt)
+  } catch (err) {
+    console.error(err)
+  }
+}
 
 const voices = [];
-const delays = [];
-
-const delay = new DelayLine(context);
-delay.output().connect(master);
-delays.push(delay);
+const spaces = [];
 
 setInterval(update, CONTROL_TIME);
 </script>
@@ -48,8 +114,16 @@ setInterval(update, CONTROL_TIME);
 <template>
   <h1>Resonant Life</h1>
   <button id="resume" @click="context.resume()">ctx.resume</button>
-  <button id="add" @click="addVoice()">add voice</button>
-  <input id='gain' @input="event => master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010)"
-    type="range" min="0" max="1" step="0.001" value="0.5"
+  <button @click="addNode('voice')">add voice</button>
+  <button @click="addNode('space')">add space</button>
+  <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010)"
+    type="range" min="0.0001" max="1" step="0.0001" value="0.5"
   />
+  <div id="flow" style="height: 75vh; width: 100vw;">
+    <Flow
+      ref="flow"
+      @edge-add="connect"
+      @edge-remove="disconnect"
+    />
+  </div>
 </template>
