@@ -196,7 +196,8 @@ export class Space extends Node {
   update(delta?: any) {
     if (this.ctx.currentTime > this.nextTick) {
       super.update(delta);
-      this.delay.delayTime.setValueAtTime(this.base.delayTime * delta.dt, this.nextTick);
+      this.delay.delayTime.exponentialRampToValueAtTime(this.base.delayTime * delta.dt, this.nextTick);
+      this.delay.delayTime.exponentialRampToValueAtTime(this.base.fb * delta.fb, this.nextTick);
     }
   }
   

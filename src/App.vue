@@ -35,7 +35,13 @@ function update() {
       gain: Random.normal(1, 0.1),
     });
   });
-
+  spaces.forEach((space) => {
+    space.update({ 
+      time: Random.exponential(1/10),
+      dt: Random.normal(1, 0.02),
+      fb: Math.min(Random.normal(1, 0.1), 0.95 / space.base.fb),
+    });
+  });
 }
 
 function addNode(type/*: 'voice' | 'space'*/) {
@@ -47,7 +53,7 @@ function addNode(type/*: 'voice' | 'space'*/) {
     node = new Voice(context, { frequency: randFreq(), gain: randGain() });
     voices.push(node);
   } else if (type === 'space') {
-    node = new Space(context, { delayTime: randDT() });
+    node = new Space(context, { delayTime: randDT(), fb: 0.7 });
     node.connect(output);
 
     spaces.push(node);
