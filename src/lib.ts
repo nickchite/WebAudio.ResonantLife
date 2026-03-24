@@ -145,13 +145,16 @@ export abstract class Node {
 export class Voice extends Node {
   osc: OscillatorNode;
   gain: GainNode;
+  adsr: ADSR;
   
   constructor(ctx: AudioContext, base: any) {
     super(ctx, base);
     this.osc = new OscillatorNode(ctx);
     this.gain = new GainNode(ctx);
+    this.adsr = new ADSR(ctx, 0.01, 0.1, 0.8, 0.5);
     
-    this.osc.connect(this.gain);
+    this.osc.connect(this.adsr.input());
+    this.adsr.output().connect(this.gain);
     
     this.osc.frequency.value = base.frequency;
     this.gain.gain.value = 0;
@@ -163,7 +166,8 @@ export class Voice extends Node {
     if (this.ctx.currentTime > this.nextTick) {
       super.update(delta);
       this.osc.frequency.setValueAtTime(this.base.frequency * delta.freq, this.nextTick);
-      this.gain.gain.exponentialRampToValueAtTime(delta.gain, this.nextTick);
+      this.gain.gain.setValueAtTime(this.base.gain * delta.gain, this.nextTick);
+      this.adsr.trig();
     }
   }
   
@@ -375,6 +379,15 @@ export class ADSR extends Node {
     this.release = release;
     
     this.gain = new GainNode(this.ctx, { gain: 0 });
+  }
+  
+  trig() {
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(0, now);
+    this.gain.gain.linearRampToValueAtTime(1, now + this.attack);
+    this.gain.gain.linearRampToValueAtTime(this.sustain, now + this.attack + this.decay);
+    this.gain.gain.linearRampToValueAtTime(0, now + this.attack + this.decay + this.release);
   }
   
   start() {

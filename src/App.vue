@@ -24,7 +24,7 @@ if (import.meta.hot) {
 }
 
 function randFreq() { return Random.linexp(0, 1, 60, 8000); }
-function randGain() { return Random.linexp(0, 1, 0.01, 1); }
+function randGain() { return Random.linexp(0, 1, 0.06, 1); }
 function randDT() { return Random.linexp(0, 1, 0.25, 2); }
 
 function update() {
@@ -32,9 +32,10 @@ function update() {
     voice.update({ 
       time: Random.exponential(1),
       freq: Random.normal(1, 0.02),
-      gain: randGain()
+      gain: Random.normal(1, 0.1),
     });
   });
+
 }
 
 function addNode(type/*: 'voice' | 'space'*/) {
@@ -43,7 +44,7 @@ function addNode(type/*: 'voice' | 'space'*/) {
 
   let node;
   if (type === 'voice') {
-    node = new Voice(context, { frequency: randFreq() });
+    node = new Voice(context, { frequency: randFreq(), gain: randGain() });
     voices.push(node);
   } else if (type === 'space') {
     node = new Space(context, { delayTime: randDT() });
