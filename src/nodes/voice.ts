@@ -34,25 +34,17 @@ export class Voice extends Node {
   output() { return this.gain; }
 }
 
-export class FormantVoice extends Node {
-  osc: OscillatorNode;
-  gain: GainNode;
+export class FormantVoice extends Voice {
   filters: BiquadFilterNode[];
 
-  constructor(ctx: AudioContext, formants: number[]) {
-    super(ctx);
-    this.osc = new OscillatorNode(ctx);
+  constructor(ctx: AudioContext, base: any) {
+    super(ctx, base);
     this.osc.type = "sawtooth";
-    this.osc.frequency.value = 600;
-    this.osc.start();
-
-    this.gain = new GainNode(ctx);
-    //this.gain.gain.value = randGain() / Math.sqrt(N);
-    this.gain.gain.value = 1;
-
-    this.filters = formants.map((f) => {
+    
+    this.filters = this.base.formants.map((f: number) => {
       const filter = new BiquadFilterNode(ctx, { type: "bandpass", frequency: f, Q: 10 });
-      this.osc.connect(filter).connect(this.gain);
+      this.osc.disconnect();
+      this.osc.connect(filter).connect(this.adsr.input());
       return filter;
     });
   }
@@ -60,5 +52,3 @@ export class FormantVoice extends Node {
   input() { return undefined; }
   output() { return this.gain; }
 }
-
-

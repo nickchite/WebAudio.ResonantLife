@@ -3,7 +3,7 @@
 import { ref } from 'vue'
 import { Random, linexp } from "./lib.ts";
 import { Output } from './nodes/misc.ts';
-import { Voice } from './nodes/voice.ts';
+import { Voice, FormantVoice } from './nodes/voice.ts';
 import { Space } from './nodes/space.ts';
 import Flow from './components/Flow.vue'
 import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
@@ -26,14 +26,15 @@ if (import.meta.hot) {
   });
 }
 
-function randFreq() { return Random.linexp(0, 1, 60, 8000); }
+function randFreq() { return Random.linexp(0, 1, 60, 1000); }
+function randFormant() { return Random.linexp(0, 1, 200, 860); }
 function randGain() { return Random.linexp(0, 1, 0.06, 1); }
 function randDT() { return Random.linexp(0, 1, 0.25, 2); }
 
 function update() {
   voices.forEach((voice) => {
     voice.update({ 
-      time: Random.exponential(1),
+      time: Random.exponential(1/3),
       freq: Random.normal(1, 0.02),
       gain: Random.normal(1, 0.1),
     });
@@ -53,7 +54,7 @@ function addNode(type/*: 'voice' | 'space'*/) {
 
   let node;
   if (type === 'voice') {
-    node = new Voice(context, { frequency: randFreq(), gain: randGain() });
+    node = new FormantVoice(context, { frequency: randFreq(), gain: randGain(), formants: [randFreq(), randFreq(), randFreq()] });
     voices.push(node);
   } else if (type === 'space') {
     node = new Space(context, { delayTime: randDT(), fb: 0.7 });
