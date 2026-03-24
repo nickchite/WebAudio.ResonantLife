@@ -1,7 +1,10 @@
 <script setup lang="js">
 
 import { ref } from 'vue'
-import { Random, linexp, Voice, Space, Output } from "./lib.ts";
+import { Random, linexp } from "./lib.ts";
+import { Output } from './nodes/misc.ts';
+import { Voice } from './nodes/voice.ts';
+import { Space } from './nodes/space.ts';
 import Flow from './components/Flow.vue'
 import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
 
