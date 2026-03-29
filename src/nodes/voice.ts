@@ -41,12 +41,21 @@ export class FormantVoice extends Voice {
     super(ctx, base);
     this.osc.type = "sawtooth";
     
-    this.filters = this.base.formants.map((f: number) => {
-      const filter = new BiquadFilterNode(ctx, { type: "bandpass", frequency: f, Q: 10 });
+    this.filters = this.base.formants.map((formant: { freq: number, Q: number }) => {
+      const filter = new BiquadFilterNode(ctx, { type: "bandpass", frequency: formant.freq, Q: formant.Q });
       this.osc.disconnect();
       this.osc.connect(filter).connect(this.adsr.input());
       return filter;
     });
+  }
+
+  update(delta?: any) { 
+    if (this.ctx.currentTime > this.nextTick) {
+      super.update(delta);
+      this.osc.frequency.setValueAtTime(this.base.frequency * delta.freq, this.nextTick);
+      this.gain.gain.setValueAtTime(this.base.gain * delta.gain, this.nextTick);
+      this.adsr.trig();
+    }
   }
 
   input() { return undefined; }

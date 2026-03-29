@@ -176,3 +176,68 @@ export class ADSR extends Node {
   input() { return this.gain; }
   output() { return this.gain; }
 }
+
+export class Comb {
+  delay: DelayNode;
+  feedback: GainNode;
+  inputNode: GainNode;
+  outputNode: GainNode;
+
+  constructor(ctx: AudioContext, delayTime: number, decay: number) {
+    this.inputNode = new GainNode(ctx);
+    this.outputNode = new GainNode(ctx);
+
+    this.delay = new DelayNode(ctx, { maxDelayTime: 3 });
+    this.delay.delayTime.value = delayTime;
+
+    this.feedback = new GainNode(ctx, { gain: decay });
+
+    this.inputNode.connect(this.delay);
+    this.delay.connect(this.feedback);
+    this.feedback.connect(this.delay);
+    this.delay.connect(this.outputNode);
+  }
+
+  input(): AudioNode { return this.inputNode; }
+  output(): AudioNode { return this.outputNode; }
+
+  setDecay(value: number) {
+    this.feedback.gain.value = value;
+  }
+}
+
+export class AllPass {
+  delay: DelayNode;
+  feedback: GainNode;
+  inputNode: GainNode;
+  outputNode: GainNode;
+  inverter: GainNode;
+
+  constructor(ctx: AudioContext, delayTime: number, feedbackGain: number) {
+    this.inputNode = new GainNode(ctx);
+    this.outputNode = new GainNode(ctx);
+
+    // y = -x + delay + feedback
+    this.inverter = new GainNode(ctx, { gain: -1 });
+
+    this.delay = new DelayNode(ctx, { maxDelayTime: 0.05 });
+    this.delay.delayTime.value = delayTime;
+
+    this.feedback = new GainNode(ctx, { gain: feedbackGain });
+
+    this.inputNode.connect(this.inverter);
+    this.inverter.connect(this.outputNode);
+
+    this.inputNode.connect(this.delay);
+    this.delay.connect(this.feedback);
+    this.feedback.connect(this.delay);
+    this.delay.connect(this.outputNode);
+  }
+
+  input(): AudioNode { return this.inputNode; }
+  output(): AudioNode { return this.outputNode; }
+
+  setFeedback(value: number) {
+    this.feedback.gain.value = value;
+  }
+}

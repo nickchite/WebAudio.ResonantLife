@@ -1,13 +1,14 @@
 <script setup lang="js">
 
 import { ref } from 'vue'
-import { Random, linexp } from "./lib.ts";
-import { Output } from './nodes/misc.ts';
-import { Voice, FormantVoice } from './nodes/voice.ts';
-import { Space } from './nodes/space.ts';
 import Flow from './components/Flow.vue'
 import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
 
+import { Random } from "./lib.ts";
+import { Output } from './nodes/misc.ts';
+import { Voice, FormantVoice } from './nodes/voice.ts';
+import { Space, ReverbSpace } from './nodes/space.ts';
+import { rand_type, rand_freq, random_formants } from './nodes/formant.ts';
 
 const flow = ref(null);
 
@@ -26,24 +27,19 @@ if (import.meta.hot) {
   });
 }
 
-function randFreq() { return Random.linexp(0, 1, 60, 1000); }
-function randFormant() { return Random.linexp(0, 1, 200, 860); }
-function randGain() { return Random.linexp(0, 1, 0.06, 1); }
-function randDT() { return Random.linexp(0, 1, 0.25, 2); }
+function randGain() { return Random.uniform().linexp(0, 1, 0.06, 1).sample(); }
 
 function update() {
   voices.forEach((voice) => {
     voice.update({ 
-      time: Random.exponential(1/3),
-      freq: Random.normal(1, 0.02),
-      gain: Random.normal(1, 0.1),
+      time: Random.exponential(1/3).sample(),
+      freq: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
+      gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
     });
   });
   spaces.forEach((space) => {
     space.update({ 
-      time: Random.exponential(1/10),
-      dt: Random.normal(1, 0.02),
-      fb: Math.min(Random.normal(1, 0.1), 0.95 / space.base.fb),
+      time: Random.exponential(1/10).sample(),
     });
   });
 }
@@ -54,10 +50,19 @@ function addNode(type/*: 'voice' | 'space'*/) {
 
   let node;
   if (type === 'voice') {
-    node = new FormantVoice(context, { frequency: randFreq(), gain: randGain(), formants: [randFreq(), randFreq(), randFreq()] });
+    const type = rand_type();
+    node = new FormantVoice(context, {
+      frequency: rand_freq(type),
+      gain: randGain(),
+      formants: random_formants(type),
+    });
     voices.push(node);
   } else if (type === 'space') {
-    node = new Space(context, { delayTime: randDT(), fb: 0.7 });
+    node = new ReverbSpace(context, {
+      decay: Random.uniform().linexp(0, 1, 0.4, 0.90).sample(),
+      combDelays: Array(Random.uniform().linlin(0, 1, 4, 9).floor().sample()).fill(0).map(() => Random.uniform().linexp(0, 1, 0.03, 0.07).sample()),
+      allPassDelays: Array(Random.uniform().linlin(0, 1, 2, 5).floor().sample()).fill(0).map(() => Random.uniform().linexp(0, 1, 0.001, 0.050).sample()),
+    });
     node.connect(output);
 
     spaces.push(node);
