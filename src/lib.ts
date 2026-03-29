@@ -62,6 +62,8 @@ const distributions: { fn: Distribution; alias?: string }[] = [
   { fn: Math.random, alias: 'uniform' },
   { fn: normal },
   { fn: exponential },
+  { fn: gamma },
+  { fn: gamma_tempo },
 ];
 distributions.forEach((distribution) => { Random.register_distribution(distribution.fn, distribution.alias); });
 
@@ -76,14 +78,21 @@ const transformers: { fn: Transform; alias?: string }[] = [
 transformers.forEach((transformer) => { Random.register_transform(transformer.fn, transformer.alias); });
 
 function normal(mean = 0, std = 1) {
-  const u1 = Math.random();
-  const u2 = Math.random();
-  const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return z0 * std + mean;
+  return jstat.normal.sample(mean, std);
 }
 
 function exponential(lambda: number) {
   return -Math.log(1 - Math.random()) / lambda;
+}
+
+function gamma(shape: number, scale: number) {
+  return jstat.gamma.sample(shape, scale);
+}
+
+function gamma_tempo(tempo: number, shape: number) {
+  const u = 60 / tempo;
+  const scale = u / shape;
+  return jstat.gamma.sample(shape, scale);
 }
 
 /**

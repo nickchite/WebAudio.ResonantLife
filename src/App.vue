@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import Flow from './components/Flow.vue'
 import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
 
-import { Random } from "./lib.ts";
+import { Random, linexp } from "./lib.ts";
 import { Output } from './nodes/misc.ts';
 import { Voice, FormantVoice } from './nodes/voice.ts';
 import { Space, ReverbSpace } from './nodes/space.ts';
@@ -17,6 +17,10 @@ const CONTROL_TIME = 1000 / CONTROL_RATE;
 
 const context = new AudioContext();
 const output = new Output(context);
+
+
+const shape = ref(0.5);
+const tempo = ref(120);
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -32,7 +36,7 @@ function randGain() { return Random.uniform().linexp(0, 1, 0.06, 1).sample(); }
 function update() {
   voices.forEach((voice) => {
     voice.update({ 
-      time: Random.exponential(1/3).sample(),
+      time: Random.gamma_tempo(tempo.value, shape.value).sample(),
       freq: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
       gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
     });
@@ -134,6 +138,14 @@ setInterval(update, CONTROL_TIME);
   <button @click="addNode('space')">add space</button>
   <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010)"
     type="range" min="0.0001" max="1" step="0.0001" value="0.5"
+  />
+  <label for="tempo">tempo {{ tempo }}</label>
+  <input id='tempo' @input="event => tempo = event.target.value"
+    type="range" min="30" max="240" step="0.01" value="120"
+  />
+  <label for="scale">scale {{ shape }}</label>
+  <input id='scale' @input="event => shape = linexp(event.target.value, 0, 1, 0.1, 1000)"
+    type="range" min="0" max="1" step="0.0001" value="0.5"
   />
   <div id="flow" style="height: 75vh; width: 100vw;">
     <Flow
