@@ -149,13 +149,12 @@ export class ADSR extends Node {
     this.gain = new GainNode(this.ctx, { gain: 0 });
   }
   
-  trig() {
-    const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(0, now);
-    this.gain.gain.linearRampToValueAtTime(1, now + this.attack);
-    this.gain.gain.linearRampToValueAtTime(this.sustain, now + this.attack + this.decay);
-    this.gain.gain.linearRampToValueAtTime(0, now + this.attack + this.decay + this.release);
+  trig(time: number) {
+    this.gain.gain.cancelScheduledValues(time);
+    this.gain.gain.setValueAtTime(this.gain.gain.value, this.ctx.currentTime);
+    this.gain.gain.linearRampToValueAtTime(1, time + this.attack);
+    this.gain.gain.linearRampToValueAtTime(this.sustain, time + this.attack + this.decay);
+    this.gain.gain.linearRampToValueAtTime(0, time + this.attack + this.decay + this.release);
   }
   
   start() {

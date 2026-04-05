@@ -6,26 +6,27 @@ import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
 
 import { Random, linexp } from "./lib.ts";
 import { Output } from './nodes/misc.ts';
-import { Voice, FormantVoice } from './nodes/voice.ts';
-import { Space, ReverbSpace } from './nodes/space.ts';
+import { SineVoice, FormantVoice } from './nodes/voice.ts';
+import { Space, DelaySpace, ReverbSpace, SpaceFactory } from './nodes/space.ts';
 import { rand_type, rand_freq, random_formants } from './nodes/formant.ts';
+
+import { VoiceFactory } from './nodes/voice.ts';
 
 const flow = ref(null);
 
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 
-const context = new AudioContext();
-const output = new Output(context);
-
+const ctx = new AudioContext();
+const output = new Output(ctx);
 
 const shape = ref(0.5);
 const tempo = ref(120);
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    if (context && context.state !== 'closed') {
-      context.close();
+    if (ctx && ctx.state !== 'closed') {
+      ctx.close();
       console.log('Audio Context Closed');
     }
   });
@@ -37,7 +38,7 @@ function update() {
   voices.forEach((voice) => {
     voice.update({ 
       time: Random.gamma_tempo(tempo.value, shape.value).sample(),
-      freq: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
+      frequency: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
       gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
     });
   });
@@ -54,21 +55,11 @@ function addNode(type/*: 'voice' | 'space'*/) {
 
   let node;
   if (type === 'voice') {
-    const type = rand_type();
-    node = new FormantVoice(context, {
-      frequency: rand_freq(type),
-      gain: randGain(),
-      formants: random_formants(type),
-    });
+    node = VoiceFactory.createRandom(ctx);
     voices.push(node);
   } else if (type === 'space') {
-    node = new ReverbSpace(context, {
-      decay: Random.uniform().linexp(0, 1, 0.4, 0.90).sample(),
-      combDelays: Array(Random.uniform().linlin(0, 1, 4, 9).floor().sample()).fill(0).map(() => Random.uniform().linexp(0, 1, 0.03, 0.07).sample()),
-      allPassDelays: Array(Random.uniform().linlin(0, 1, 2, 5).floor().sample()).fill(0).map(() => Random.uniform().linexp(0, 1, 0.001, 0.050).sample()),
-    });
+    node = SpaceFactory.createRandom(ctx);
     node.connect(output);
-
     spaces.push(node);
   }
 
@@ -133,10 +124,10 @@ setInterval(update, CONTROL_TIME);
 
 <template>
   <h1>Resonant Life</h1>
-  <button id="resume" @click="context.resume()">ctx.resume</button>
+  <button id="resume" @click="ctx.resume()">ctx.resume</button>
   <button @click="addNode('voice')">add voice</button>
   <button @click="addNode('space')">add space</button>
-  <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, context.currentTime + 0.010)"
+  <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, ctx.currentTime + 0.010)"
     type="range" min="0.0001" max="1" step="0.0001" value="0.5"
   />
   <label for="tempo">tempo {{ tempo }}</label>
