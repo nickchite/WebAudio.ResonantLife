@@ -2,80 +2,79 @@ import * as jstat from 'jstat';
 
 type Transform = (x: number, ...args: any[]) => number;
 type Distribution = (...args: any[]) => number;
+type Tail<T extends unknown[]> = T extends [any, ...infer Rest] ? Rest : never;
 
-export class Random {
+const typedEntries = <T extends Record<string, unknown>>(obj: T) =>
+  Object.entries(obj) as { [K in keyof T]: [K, T[K]] }[keyof T][];
+
+class RandomCore {
   private base: () => number;
   private transforms: Transform[] = [];
-  private static registry: Record<string, Transform> = {};
+  private static registry: Record<string, Transform | Distribution> = {};
   
   private constructor(base: () => number) { this.base = base; }
 
-  map(transform: Transform, ...args: any[]) {
+  map(transform: Transform, ...args: any[]): this {
     this.transforms.push((x: number) => transform(x, ...args));
     return this;
   }
   
-   static register_distribution(fn: Distribution, alias?: string) {
-    const name = alias || fn.name;
+  static register_distribution(name: string, fn: Distribution) {
     if (this.registry[name]) throw new Error(`Transformer ${name} already registered`);
 
     this.registry[name] = fn;
 
-    Object.defineProperty(Random, name, {
-      value: function (...args: any[]) {
-        return new Random(() => fn(...args));
-      },
+    Object.defineProperty(this, name, {
+      value: (...args: any[]) => new RandomCore(() => fn(...args)),
       writable: false,
     });
-    
-    console.log(`Registered distribution: ${name}`, fn);
   } 
   
-  static register_transform(fn: Transform, alias?: string) {
-    const name = alias || fn.name;
+  static register_transform(name: string, fn: Transform) {
     if (this.registry[name]) throw new Error(`Transformer ${name} already registered`);
 
     this.registry[name] = fn;
 
-    Object.defineProperty(Random.prototype, name, {
-      value: function (...args: any[]) {
+    Object.defineProperty(this.prototype, name, {
+      value: function (this: RandomCore, ...args: any[]) {
         return this.map(fn, ...args);
       },
       writable: false,
     });
-    
-    console.log(`Registered transformer: ${name}`, fn);
   } 
   
   sample() { return this.transforms.reduce((acc, transform) => transform(acc), this.base()); }
-  
-  // TODO: refactor
-  static rgb() {
-    const r = Math.floor(Math.random() * 256);
-    const g = Math.floor(Math.random() * 256);
-    const b = Math.floor(Math.random() * 256);
-    return `rgb(${r}, ${g}, ${b})`;
-  }
 }
 
-const distributions: { fn: Distribution; alias?: string }[] = [
-  { fn: Math.random, alias: 'uniform' },
-  { fn: normal },
-  { fn: exponential },
-  { fn: gamma },
-  { fn: gamma_tempo },
-];
-distributions.forEach((distribution) => { Random.register_distribution(distribution.fn, distribution.alias); });
+const distributions = {
+  uniform: Math.random,
+  normal,
+  exponential,
+  gamma,
+  gamma_tempo,
+} as const satisfies Record<string, Distribution>;
 
-const transformers: { fn: Transform; alias?: string }[] = [
-  { fn: linlin },
-  { fn: linexp },
-  { fn: Math.floor },
-  { fn: Math.min },
-  { fn: Math.max },
-  { fn: clamp },
-];
-transformers.forEach((transformer) => { Random.register_transform(transformer.fn, transformer.alias); });
+const transformers = {
+  linlin,
+  linexp,
+  floor: Math.floor,
+  min: Math.min,
+  max: Math.max,
+  clamp,
+} as const satisfies Record<string, Transform>;
+
+export type Random = RandomCore & {
+  [K in keyof typeof transformers]: (...args: Tail<Parameters<(typeof transformers)[K]>>) => Random;
+};
+
+type RandomConstructor = typeof RandomCore & {
+  [K in keyof typeof distributions]: (...args: Parameters<(typeof distributions)[K]>) => Random;
+};
+
+export const Random = RandomCore as RandomConstructor;
+
+typedEntries(distributions).forEach(([name, fn]) => { Random.register_distribution(name, fn); });
+typedEntries(transformers).forEach(([name, fn]) => { Random.register_transform(name, fn); });
 
 function normal(mean = 0, std = 1) {
   return jstat.normal.sample(mean, std);
