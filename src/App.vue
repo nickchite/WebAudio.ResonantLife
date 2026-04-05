@@ -27,22 +27,20 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (ctx && ctx.state !== 'closed') {
       ctx.close();
-      console.log('Audio Context Closed');
+      console.log('VITE Reload: Audio Context Closed');
     }
   });
 }
 
-function randGain() { return Random.uniform().linexp(0, 1, 0.06, 1).sample(); }
-
 function update() {
-  voices.forEach((voice) => {
+  voices.value.forEach((voice) => {
     voice.update({ 
       time: Random.gamma_tempo(tempo.value, shape.value).sample(),
       frequency: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
       gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
     });
   });
-  spaces.forEach((space) => {
+  spaces.value.forEach((space) => {
     space.update({ 
       time: Random.exponential(1/10).sample(),
     });
@@ -50,17 +48,17 @@ function update() {
 }
 
 function addNode(type/*: 'voice' | 'space'*/) {
-  const idx = type === 'voice' ? voices.length : spaces.length;
+  const idx = type === 'voice' ? voices.value.length : spaces.value.length;
   const id = `${type}-${idx}`;
 
   let node;
   if (type === 'voice') {
     node = VoiceFactory.createRandom(ctx);
-    voices.push(node);
+    voices.value.push(node);
   } else if (type === 'space') {
     node = SpaceFactory.createRandom(ctx);
     node.connect(output);
-    spaces.push(node);
+    spaces.value.push(node);
   }
 
   flow.value.graph.set(id, node);
@@ -116,8 +114,8 @@ function disconnect(source, target) {
   }
 }
 
-const voices = [];
-const spaces = [];
+const voices = ref([]);
+const spaces = ref([]);
 
 setInterval(update, CONTROL_TIME);
 </script>
