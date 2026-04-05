@@ -43,12 +43,6 @@ export class DelaySpace extends Space {
     this.delay.connect(this.feedforward);
   }
   
-  on_update(delta?: any) {
-    const now = this.ctx.currentTime;
-    // this.delay.delayTime.exponentialRampToValueAtTime(this.base.delayTime * delta.dt, now + AR_TICK_SIZE);
-    // this.delay.delayTime.exponentialRampToValueAtTime(this.base.fb * delta.fb, now + AR_TICK_SIZE);
-  }
-  
   updaters(delta?: any) {
     return {
       delayTime: {
