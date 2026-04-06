@@ -11,7 +11,8 @@ export class EmptySpace extends Space {
 
   constructor(ctx: AudioContext, base?: any) {
     super(ctx, base);
-    this.gain = new GainNode(ctx, { gain: 1 });
+    this.gain = ctx.createGain();
+    this.gain.gain.value = 1;
   }
   
   updaters() { return undefined }
@@ -27,9 +28,11 @@ export class DelaySpace extends Space {
   
   constructor(ctx: AudioContext, base?: any) {
     super(ctx, base);
-    this.delay = new DelayNode(ctx, { maxDelayTime: 3 });
-    this.feedback = new GainNode(ctx, { gain: 0.8 });
-    this.feedforward = new GainNode(ctx, { gain: 0 });
+    this.delay = ctx.createDelay(3);
+    this.feedback = ctx.createGain();
+    this.feedback.gain.value = 0.8;
+    this.feedforward = ctx.createGain();
+    this.feedforward.gain.value = 0;
     
     if (!this.base) this.base = {
       delayTime: 0.5,
@@ -78,7 +81,8 @@ export class ReverbSpace extends Space {
   } = {}) {
     super(ctx, base);
     
-    if (!this.base) this.base = {
+    // TODO: if !base ?
+    this.base = {
       combDelays: [0.03, 0.04, 0.05, 0.06],
       allPassDelays: [0.01, 0.01],
       decay: 0.8,
@@ -90,9 +94,11 @@ export class ReverbSpace extends Space {
     const numAllPasses = this.base.allPassDelays?.length;
     const decay = this.base.decay;
 
-    this.outputNode = new GainNode(ctx);
-    this.wetGain = new GainNode(ctx, { gain: this.base.wet });
-    this.dryGain = new GainNode(ctx, { gain: this.base.dry });
+    this.outputNode = ctx.createGain();
+    this.wetGain = ctx.createGain();
+    this.wetGain.gain.value = this.base.wet;
+    this.dryGain = ctx.createGain();
+    this.dryGain.gain.value = this.base.dry;
 
     this.combs = [];
     for (let i = 0; i < numCombs; i++) {

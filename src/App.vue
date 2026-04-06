@@ -1,6 +1,6 @@
 <script setup lang="js">
 
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import Flow from './components/Flow.vue'
 import { applyChanges, VueFlow, useVueFlow } from '@vue-flow/core'
 
@@ -12,17 +12,40 @@ import { rand_type, rand_freq, random_formants } from './nodes/formant.ts';
 
 import { VoiceFactory } from './nodes/voice.ts';
 
+import * as Tone from "tone";
+
 const flow = ref(null);
 
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 
-const ctx = new AudioContext();
-const output = new Output(ctx);
-
 const shape = ref(0.5);
 const tempo = ref(120);
 
+const voices = ref([]);
+const spaces = ref([]);
+
+let ctx;
+let output;
+
+const startAudio = async () => {
+  await Tone.start();
+  ctx = Tone.context;
+
+  output = new Output(ctx);
+
+  setInterval(update, CONTROL_TIME);
+}
+
+onMounted(async () => { startAudio(); });
+
+/* onMounted(async () => {
+  await Tone.start();
+  ctx = Tone.getContext();
+  console.log('Audio Context Started', ctx);
+
+});
+ */
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (ctx && ctx.state !== 'closed') {
@@ -113,11 +136,7 @@ function disconnect(source, target) {
     console.error(err)
   }
 }
-
-const voices = ref([]);
-const spaces = ref([]);
-
-setInterval(update, CONTROL_TIME);
+;
 </script>
 
 <template>

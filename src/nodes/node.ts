@@ -11,7 +11,8 @@ export abstract class Node {
     this.ctx = ctx;
     this.nextTick = this.ctx.currentTime;
     this.base = base;
-    this.fanGain = new GainNode(ctx, { gain: 1 });
+    this.fanGain = ctx.createGain();
+    this.fanGain.gain.value = 1;
   }
 
   connect(destination: Node): Node {

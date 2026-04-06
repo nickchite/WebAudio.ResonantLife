@@ -21,8 +21,8 @@ export class SineVoice extends Voice {
       gain: 1,
     };
 
-    this.osc = new OscillatorNode(ctx);
-    this.gain = new GainNode(ctx);
+    this.osc = ctx.createOscillator();
+    this.gain = ctx.createGain();
     this.adsr = new ADSR(ctx, 0.02, 0, 1, 0.05);
     
     this.osc.connect(this.adsr.input());
@@ -75,7 +75,10 @@ export class FormantVoice extends SineVoice {
     };
     
     this.filters = this.base.formants.map((formant: { freq: number, Q: number }) => {
-      const filter = new BiquadFilterNode(ctx, { type: "bandpass", frequency: formant.freq, Q: formant.Q });
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = formant.freq;
+      filter.Q.value = formant.Q;
       this.osc.disconnect();
       this.osc.connect(filter).connect(this.adsr.input());
       return filter;

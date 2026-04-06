@@ -1,16 +1,20 @@
 import { Node } from './node';
+import * as Tone from 'tone';
 
 export class Output extends Node {
   master: GainNode;
 
   constructor(ctx: AudioContext) {
     super(ctx);
-    this.master = new GainNode(ctx);
-    this.fanGain.connect(this.master).connect(this.ctx.destination);
+    this.master = ctx.createGain();
+    this.fanGain.connect(this.master).connect(Tone.getDestination().input.input.input);
   }
   
   input() { return this.fanGain; }
   output() { return undefined; }
+  updaters(delta?: { [param: string]: any; }): Record<string, { object: Object; update_fn: Function; args: number[]; }> | undefined {
+    throw new Error('Method not implemented.');
+  }
 }
 
 export class Scaler extends Node {
@@ -28,8 +32,8 @@ export class Scaler extends Node {
     this.outMin = outMin;
     this.outMax = outMax;
 
-    this.gain = new GainNode(this.ctx);
-    this.constant = new ConstantSourceNode(this.ctx);
+    this.gain = this.ctx.createGain();
+    this.constant = this.ctx.createConstantSource();
     
     this.gain.gain.value = (outMax - outMin) / (inMax - inMin);
     this.constant.offset.value = (outMin - inMin * this.gain.gain.value) / this.gain.gain.value;
@@ -43,13 +47,14 @@ export class Scaler extends Node {
 
 export class Noise extends Node {
   noise: ScriptProcessorNode;
-  gain: GainNode
+  gain: GainNode;
   bufferSize: number = 4096;
 
   constructor(ctx: AudioContext) {
     super(ctx);
     this.noise = this.ctx.createScriptProcessor(this.bufferSize, 1, 1);
-    this.gain = new GainNode(this.ctx, { gain: 1e-2 });
+    this.gain = this.ctx.createGain();
+    this.gain.gain.value = 1e-2;
 
     // https://noisehack.com/generate-noise-web-audio-api
     const bufferSize = 4096;
@@ -72,7 +77,7 @@ export class SoundFilePlayer extends Node {
 
   constructor(ctx: AudioContext) {
     super(ctx);
-    this.source = new AudioBufferSourceNode(ctx);
+    this.source = ctx.createBufferSource();
   }
 
   async load(filename: string) {
@@ -103,7 +108,9 @@ class SoundIn extends Node {
       echoCancellation: false,
       noiseSuppression: false,
     })
-    .then((stream) => { this.source = new MediaStreamAudioSourceNode(this.ctx, { mediaStream: stream }); });
+    .then((stream) => {
+      this.source = this.ctx.createMediaStreamSource(stream);
+    });
   } 
   
   stop() { this.source?.disconnect(); }
@@ -117,7 +124,7 @@ export class ConvolutionReverb extends Node {
 
     constructor(ctx: AudioContext) {
       super(ctx);
-      this.convolver = new ConvolverNode(ctx);
+      this.convolver = ctx.createConvolver();
     }
     
     load(filename: string) {
@@ -146,7 +153,8 @@ export class ADSR extends Node {
     this.sustain = sustain;
     this.release = release;
     
-    this.gain = new GainNode(this.ctx, { gain: 0 });
+    this.gain = this.ctx.createGain();
+    this.gain.gain.value = 0;
   }
   
   trig(time: number) {
@@ -183,13 +191,14 @@ export class Comb {
   outputNode: GainNode;
 
   constructor(ctx: AudioContext, delayTime: number, decay: number) {
-    this.inputNode = new GainNode(ctx);
-    this.outputNode = new GainNode(ctx);
+    this.inputNode = ctx.createGain();
+    this.outputNode = ctx.createGain();
 
-    this.delay = new DelayNode(ctx, { maxDelayTime: 3 });
+    this.delay = ctx.createDelay(3);
     this.delay.delayTime.value = delayTime;
 
-    this.feedback = new GainNode(ctx, { gain: decay });
+    this.feedback = ctx.createGain();
+    this.feedback.gain.value = decay; 
 
     this.inputNode.connect(this.delay);
     this.delay.connect(this.feedback);
@@ -213,16 +222,18 @@ export class AllPass {
   inverter: GainNode;
 
   constructor(ctx: AudioContext, delayTime: number, feedbackGain: number) {
-    this.inputNode = new GainNode(ctx);
-    this.outputNode = new GainNode(ctx);
+    this.inputNode = ctx.createGain();
+    this.outputNode = ctx.createGain();
 
     // y = -x + delay + feedback
-    this.inverter = new GainNode(ctx, { gain: -1 });
+    this.inverter = ctx.createGain();
+    this.inverter.gain.value = -1;
 
-    this.delay = new DelayNode(ctx, { maxDelayTime: 0.05 });
+    this.delay = ctx.createDelay(0.05);
     this.delay.delayTime.value = delayTime;
 
-    this.feedback = new GainNode(ctx, { gain: feedbackGain });
+    this.feedback = ctx.createGain();
+    this.feedback.gain.value = feedbackGain;
 
     this.inputNode.connect(this.inverter);
     this.inverter.connect(this.outputNode);
