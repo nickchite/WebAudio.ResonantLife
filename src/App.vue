@@ -24,6 +24,7 @@ const tempo = ref(120);
 
 const voices = ref([]);
 const spaces = ref([]);
+const suppressedEdgeAdds = new Set();
 
 let ctx;
 let output;
@@ -123,6 +124,20 @@ async function addNode(type/*: 'voice' | 'space'*/) {
       node: node,
     }
   });
+
+  if (type === 'voice' && spaces.value.length > 0) {
+    const targetIndex = Math.floor(Math.random() * spaces.value.length);
+    const targetId = `space-${targetIndex}`;
+    const edgeKey = `${id}->${targetId}`;
+
+    await connect(id, targetId);
+    suppressedEdgeAdds.add(edgeKey);
+    flow.value.addEdges({
+      id: edgeKey,
+      source: id,
+      target: targetId,
+    });
+  }
   
   console.log('added node', id, node);
 }
@@ -157,6 +172,12 @@ function getSpawnPosition(type) {
 
 async function connect(source, target) {
   await ensureAudioRunning();
+
+  const edgeKey = `${source}->${target}`;
+  if (suppressedEdgeAdds.has(edgeKey)) {
+    suppressedEdgeAdds.delete(edgeKey);
+    return
+  }
 
   const src = flow.value.graph.get(source)
   const tgt = flow.value.graph.get(target)
