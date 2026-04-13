@@ -17,23 +17,33 @@ export abstract class Node {
     this.fanGain.gain.value = 1;
   }
 
-  connect(destination: Node): Node {
+  private rampFanGain(destination: Node, rampTime = 0.1) {
+    const g = destination.fanGain.gain;
+    const target = 1 / Math.max(1, destination.fanIn);
+    const now = this.ctx.currentTime;
+    g.setValueAtTime(g.value, now);
+    g.exponentialRampToValueAtTime(target, now + rampTime);
+  }
+
+  connect(destination: Node, rampTime = 0.1): Node {
     const source = this.output();
     const target = destination.input();
     if (source && target) {
       Tone.connect(source as any, target as any);
     }
-    destination.fanGain.gain.value = 1 / ++destination.fanIn;
+    ++destination.fanIn;
+    this.rampFanGain(destination, rampTime);
     return destination;
   }
 
-  disconnect(destination: Node): void {
+  disconnect(destination: Node, rampTime = 0.1): void {
     const source = this.output();
     const target = destination.input();
     if (source && target) {
       Tone.disconnect(source as any, target as any);
     }
-    destination.fanGain.gain.value = 1 / Math.max(1, --destination.fanIn);
+    destination.fanIn = Math.max(0, --destination.fanIn);
+    this.rampFanGain(destination, rampTime);
     return undefined;
   }
   
