@@ -27,6 +27,7 @@ const spaces = ref([]);
 
 let ctx;
 let output;
+let updateInterval;
 
 function safeGainValue(value) {
   return typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(3)) : value;
@@ -54,7 +55,7 @@ const startAudio = async () => {
 
   output = new Output(ctx);
   
-  setInterval(update, CONTROL_TIME);
+  updateInterval = setInterval(update, CONTROL_TIME);
 }
 
 const ensureAudioRunning = async () => {
@@ -68,12 +69,13 @@ onMounted(async () => { startAudio(); });
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    if (ctx && ctx.state !== 'closed') {
-      ctx.close();
-      console.log('VITE Reload: Audio Context Closed');
-    }
+    clearInterval(updateInterval);
+    // Leave Tone's shared AudioContext open across HMR — closing it bricks
+    // the context for the life of the page requiring a full browser reload.
+    console.log('VITE Reload: interval cleared, audio context preserved');
   });
 }
+
 
 function update() {
   voices.value.forEach((voice) => {
