@@ -77,13 +77,31 @@ export class SineVoice extends Voice {
   }
   
   static randomize(): any {
+    const longMode = Math.random() < 0.4;
+
+    const attack = longMode
+      ? Random.uniform().linexp(0, 1, 0.25, 2.8).sample()
+      : Random.uniform().linexp(0, 1, 0.01, 0.18).sample();
+
+    const release = longMode
+      ? Random.uniform().linexp(0, 1, 0.4, 4.5).sample()
+      : Random.uniform().linexp(0, 1, 0.03, 0.5).sample();
+
+    const decay = longMode
+      ? Random.uniform().linexp(0, 1, 0.08, 1.2).sample()
+      : Random.uniform().linexp(0, 1, 0.01, 0.25).sample();
+
+    const sustain = longMode
+      ? Random.uniform().linexp(0, 1, 0.55, 1.0).sample()
+      : Random.uniform().linexp(0, 1, 0.2, 0.95).sample();
+
     return {
-      frequency: Random.uniform().linexp(0, 1, 110, 880).sample(),
+      frequency: Random.uniform().linexp(0, 1, 90, 1300).sample(),
       gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
-      attack:    Random.uniform().linexp(0, 1, 0.02, 0.3).sample(),
-      decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
-      sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
-      release:   Random.uniform().linexp(0, 1, 0.05, 0.5).sample(),
+      attack,
+      decay,
+      sustain,
+      release,
     };
   }
 
