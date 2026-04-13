@@ -105,6 +105,9 @@ async function addNode(type/*: 'voice' | 'space'*/) {
   } else if (type === 'space') {
     node = SpaceFactory.create(ctx).randomize();
     node.connect(output);
+    const pan = pickPan(spaces.value.map(s => s.base.pannerPos));
+    node.base.pannerPos = pan;
+    node.panner.pan.value = pan;
     spaces.value.push(node);
   }
 
@@ -122,6 +125,27 @@ async function addNode(type/*: 'voice' | 'space'*/) {
   });
   
   console.log('added node', id, node);
+}
+
+function pickPan(existing, candidates = 32) {
+  if (existing.length === 0) return (Math.random() * 2) - 1;
+  let best = -1, bestScore = -Infinity;
+  for (let i = 0; i < candidates; i++) {
+    const candidate = (Math.random() * 2) - 1;
+    const minDist = Math.min(...existing.map(p => Math.abs(candidate - p)));
+    if (minDist > bestScore) { bestScore = minDist; best = candidate; }
+  }
+  return best;
+}
+
+function redistributePan(rampTime = 1.5) {
+  const n = spaces.value.length;
+  const now = ctx.currentTime;
+  spaces.value.forEach((space, i) => {
+    const pan = n === 1 ? 0 : -1 + (2 * i) / (n - 1);
+    space.base.pannerPos = pan;
+    space.panner.pan.linearRampToValueAtTime(pan, now + rampTime);
+  });
 }
 
 function getSpawnPosition(type) {

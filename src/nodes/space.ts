@@ -257,7 +257,7 @@ export class SpaceFactory {
     space.base = {
       reverbTime: Random.uniform().linlin(0, 1, 1, 5).sample(),
       filterFreq: Random.uniform().linlin(0, 1, 1200, 5000).sample(),
-      pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+      pannerPos: 0,
       eq: [Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample()],
       dry: Random.uniform().linlin(0, 1, 0.8, 1.2).sample(),
       wet: Random.uniform().linlin(0, 1, 0.2, 0.6).sample(),
