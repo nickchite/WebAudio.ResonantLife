@@ -49,15 +49,67 @@ export class FullSpace extends Space {
   }
   
   randomize() {
-    this.base = {
-      reverbTime: Random.uniform().linlin(0, 1, 1, 5).sample(),
-      eq: [Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample()],
-      filterFreq: Random.uniform().linlin(0, 1, 1200, 5000).sample(),
-      pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
-      dry: Random.uniform().linlin(0, 1, 0.8, 1.2).sample(),
-      wet: Random.uniform().linlin(0, 1, 0.2, 0.6).sample(),
-      output: Random.uniform().linlin(0, 1, 1, 1.5).sample(),
-    }
+    const archetypes = [
+      () => ({
+        // Tight / near-dry room
+        reverbTime: Random.uniform().linlin(0, 1, 0.25, 1.1).sample(),
+        eq: [
+          Random.uniform().linlin(0, 1, -4, 4).sample(),
+          Random.uniform().linlin(0, 1, -3, 3).sample(),
+          Random.uniform().linlin(0, 1, -4, 4).sample(),
+        ],
+        filterFreq: Random.uniform().linlin(0, 1, 3200, 12000).sample(),
+        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+        dry: Random.uniform().linlin(0, 1, 1.0, 1.4).sample(),
+        wet: Random.uniform().linlin(0, 1, 0.05, 0.25).sample(),
+        output: Random.uniform().linlin(0, 1, 0.9, 1.3).sample(),
+      }),
+      () => ({
+        // Large cavern / wash
+        reverbTime: Random.uniform().linlin(0, 1, 4.5, 14).sample(),
+        eq: [
+          Random.uniform().linlin(0, 1, -10, -1).sample(),
+          Random.uniform().linlin(0, 1, -2, 6).sample(),
+          Random.uniform().linlin(0, 1, -3, 7).sample(),
+        ],
+        filterFreq: Random.uniform().linlin(0, 1, 800, 2800).sample(),
+        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+        dry: Random.uniform().linlin(0, 1, 0.2, 0.65).sample(),
+        wet: Random.uniform().linlin(0, 1, 0.75, 1.5).sample(),
+        output: Random.uniform().linlin(0, 1, 0.9, 1.4).sample(),
+      }),
+      () => ({
+        // Shimmer / airy highs
+        reverbTime: Random.uniform().linlin(0, 1, 2.5, 9).sample(),
+        eq: [
+          Random.uniform().linlin(0, 1, -12, -3).sample(),
+          Random.uniform().linlin(0, 1, -4, 2).sample(),
+          Random.uniform().linlin(0, 1, 6, 14).sample(),
+        ],
+        filterFreq: Random.uniform().linlin(0, 1, 3500, 15000).sample(),
+        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+        dry: Random.uniform().linlin(0, 1, 0.35, 0.9).sample(),
+        wet: Random.uniform().linlin(0, 1, 0.45, 1.25).sample(),
+        output: Random.uniform().linlin(0, 1, 0.95, 1.45).sample(),
+      }),
+      () => ({
+        // Band-limited / muffled radio
+        reverbTime: Random.uniform().linlin(0, 1, 0.8, 3.5).sample(),
+        eq: [
+          Random.uniform().linlin(0, 1, -12, -4).sample(),
+          Random.uniform().linlin(0, 1, 2, 10).sample(),
+          Random.uniform().linlin(0, 1, -12, -2).sample(),
+        ],
+        filterFreq: Random.uniform().linlin(0, 1, 500, 1800).sample(),
+        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+        dry: Random.uniform().linlin(0, 1, 0.8, 1.3).sample(),
+        wet: Random.uniform().linlin(0, 1, 0.15, 0.6).sample(),
+        output: Random.uniform().linlin(0, 1, 0.9, 1.35).sample(),
+      }),
+    ];
+
+    const archetype = archetypes[Math.floor(Math.random() * archetypes.length)];
+    this.base = archetype();
     return this;
   }
   
@@ -253,16 +305,6 @@ export class SpaceFactory {
 
 export class SpaceFactory {
   static create(ctx: AudioContext, base?: any): FullSpace {
-    const space = new FullSpace(ctx, base);
-    space.base = {
-      reverbTime: Random.uniform().linlin(0, 1, 1, 5).sample(),
-      filterFreq: Random.uniform().linlin(0, 1, 1200, 5000).sample(),
-      pannerPos: 0,
-      eq: [Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample()],
-      dry: Random.uniform().linlin(0, 1, 0.8, 1.2).sample(),
-      wet: Random.uniform().linlin(0, 1, 0.2, 0.6).sample(),
-      output: Random.uniform().linlin(0, 1, 1, 1.5).sample(),
-    }
-    return space;
+    return new FullSpace(ctx, base);
   }
 }
