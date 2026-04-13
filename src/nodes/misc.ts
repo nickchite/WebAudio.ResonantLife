@@ -160,8 +160,10 @@ export class ADSR extends Node {
   }
   
   trig(time: number) {
-    this.gain.gain.cancelScheduledValues(time);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, this.ctx.currentTime);
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelAndHoldAtTime(now);
+    // Ramp to zero by `time` so the attack always starts from silence.
+    this.gain.gain.linearRampToValueAtTime(0, time);
     this.gain.gain.linearRampToValueAtTime(1, time + this.attack);
     this.gain.gain.linearRampToValueAtTime(this.sustain, time + this.attack + this.decay);
     this.gain.gain.linearRampToValueAtTime(0, time + this.attack + this.decay + this.release);
@@ -169,16 +171,14 @@ export class ADSR extends Node {
   
   start() {
     const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(0, now);
+    this.gain.gain.cancelAndHoldAtTime(now);
     this.gain.gain.linearRampToValueAtTime(1, now + this.attack);
     this.gain.gain.linearRampToValueAtTime(this.sustain, now + this.attack + this.decay);
   }
 
   stop() {
     const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
+    this.gain.gain.cancelAndHoldAtTime(now);
     this.gain.gain.linearRampToValueAtTime(0, now + this.release);
   }
   

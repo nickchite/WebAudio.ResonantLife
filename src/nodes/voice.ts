@@ -39,7 +39,7 @@ export class SineVoice extends Voice {
     this.osc.connect(this.adsr.input());
     this.adsr.output().connect(this.gain);
     
-    this.gain.gain.value = 0;
+    this.gain.gain.value = 1;
     
     this.osc.start();
   }
@@ -80,7 +80,7 @@ export class SineVoice extends Voice {
     return {
       frequency: Random.uniform().linexp(0, 1, 110, 880).sample(),
       gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
-      attack:    Random.uniform().linexp(0, 1, 0.005, 0.2).sample(),
+      attack:    Random.uniform().linexp(0, 1, 0.02, 0.3).sample(),
       decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
       sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
       release:   Random.uniform().linexp(0, 1, 0.05, 0.5).sample(),
@@ -134,7 +134,7 @@ export class FormantVoice extends SineVoice {
     return {
       frequency: rand_freq(type),
       gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
-      attack:    Random.uniform().linexp(0, 1, 0.005, 0.2).sample(),
+      attack:    Random.uniform().linexp(0, 1, 0.02, 0.3).sample(),
       decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
       sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
       release:   Random.uniform().linexp(0, 1, 0.05, 0.5).sample(),
