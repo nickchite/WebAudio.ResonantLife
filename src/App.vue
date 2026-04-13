@@ -164,8 +164,13 @@ function redistributePan(rampTime = 1.5) {
 }
 
 function getSpawnPosition(type) {
+  const width = window.innerWidth;
+  const isVoice = type === 'voice';
+  const minX = isVoice ? 60 : width * 0.6;
+  const maxX = isVoice ? width * 0.35 : width - 180;
+
   return {
-    x: (type === 'voice' ? 100 : 200) + Math.random() * 200,
+    x: minX + Math.random() * Math.max(40, maxX - minX),
     y: 50 + Math.random() * 500,
   }
 }
