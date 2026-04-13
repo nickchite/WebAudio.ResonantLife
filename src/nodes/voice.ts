@@ -2,6 +2,7 @@ import { Node } from './node';
 import { ADSR } from './misc';
 import { AR_TICK_SIZE } from './node';
 import { Random } from '../lib';
+import { rand_type, rand_freq, random_formants } from './formant';
 
 import * as Tone from 'tone';
 
@@ -75,6 +76,17 @@ export class SineVoice extends Voice {
     };
   }
   
+  static randomize(): any {
+    return {
+      frequency: Random.uniform().linexp(0, 1, 110, 880).sample(),
+      gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      attack:    Random.uniform().linexp(0, 1, 0.005, 0.2).sample(),
+      decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
+      sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      release:   Random.uniform().linexp(0, 1, 0.05, 0.5).sample(),
+    };
+  }
+
   output() { return this.gain; }
 }
 
@@ -115,6 +127,19 @@ export class FormantVoice extends SineVoice {
 
       return filter;
     });
+  }
+
+  static randomize(): any {
+    const type = rand_type();
+    return {
+      frequency: rand_freq(type),
+      gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      attack:    Random.uniform().linexp(0, 1, 0.005, 0.2).sample(),
+      decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
+      sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      release:   Random.uniform().linexp(0, 1, 0.05, 0.5).sample(),
+      formants:  random_formants(type),
+    };
   }
 
   output() { return this.gain; }
@@ -203,9 +228,10 @@ export class VoiceFactory {
   }
 
   static createRandom(ctx: AudioContext, base?: any): Voice {
-    const constructors = Object.values(this.registry);
-    if (constructors.length === 0) throw new Error("No voices registered");
-    const ctor = constructors[Random.uniform().linlin(0, 1, 0, constructors.length).floor().sample()];
-    return new ctor(ctx, base);
+    const entries = Object.entries(this.registry);
+    if (entries.length === 0) throw new Error("No voices registered");
+    const [, ctor] = entries[Random.uniform().linlin(0, 1, 0, entries.length).floor().sample()];
+    const randomBase = (ctor as any).randomize ? (ctor as any).randomize() : {};
+    return new ctor(ctx, { ...randomBase, ...base });
   }
 }
