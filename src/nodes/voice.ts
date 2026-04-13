@@ -3,52 +3,73 @@ import { ADSR } from './misc';
 import { AR_TICK_SIZE } from './node';
 import { Random } from '../lib';
 
+import * as Tone from 'tone';
+
 export abstract class Voice extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
   input() { return undefined }
 }
 
 export class SineVoice extends Voice {
-  osc: OscillatorNode;
+  osc: Tone.Oscillator;
   gain: GainNode;
   adsr: ADSR;
   
   constructor(ctx: AudioContext, base?: any) {
     super(ctx, base);
-    
-    if (!this.base) this.base = {
+
+    this.base = {
       frequency: 440, 
       gain: 1,
+      attack: 0.02,
+      decay: 0,
+      sustain: 1,
+      release: 0.05,
+      ...this.base,
     };
 
-    this.osc = ctx.createOscillator();
+    this.osc = new Tone.Oscillator({
+      type: "sine",
+      frequency: this.base.frequency,
+    });
     this.gain = ctx.createGain();
-    this.adsr = new ADSR(ctx, 0.02, 0, 1, 0.05);
+    this.adsr = new ADSR(ctx, this.base.attack, this.base.decay, this.base.sustain, this.base.release);
     
     this.osc.connect(this.adsr.input());
     this.adsr.output().connect(this.gain);
     
-    this.osc.frequency.value = this.base.frequency;
     this.gain.gain.value = 0;
     
     this.osc.start();
   }
 
+  setFrequency(value: number, time: number) {
+    this.osc.frequency.linearRampToValueAtTime(value, time);
+  }
+
+  setGain(value: number, time: number) {
+    this.gain.gain.linearRampToValueAtTime(value, time);
+  }
+
+  triggerADSR(time: number) {
+    this.adsr.trig(time);
+  }
+
   updaters(delta?: { time: number, frequency: number, gain: number }) {
     return {
       frequency: {
-        object: this.osc.frequency,
-        update_fn: this.osc.frequency.linearRampToValueAtTime,
+        object: this,
+        update_fn: this.setFrequency,
         args: [this.base.frequency * (delta?.frequency ?? 1), this.ctx.currentTime + AR_TICK_SIZE],
       },
       gain: {
-        object: this.gain.gain,
-        update_fn: this.gain.gain.linearRampToValueAtTime,
+        object: this,
+        update_fn: this.setGain,
         args: [this.base.gain * (delta?.gain ?? 1), this.ctx.currentTime + AR_TICK_SIZE],
       },
       adsr: {
-        object: this.adsr,
-        update_fn: this.adsr.trig,
+        object: this,
+        update_fn: this.triggerADSR,
         args: [this.ctx.currentTime + AR_TICK_SIZE],
       }
     };
@@ -58,13 +79,13 @@ export class SineVoice extends Voice {
 }
 
 export class FormantVoice extends SineVoice {
-  filters: BiquadFilterNode[];
+  filters: Tone.Filter[];
 
   constructor(ctx: AudioContext, base?: any) {
     super(ctx, base);
     this.osc.type = "sawtooth";
 
-    if (!this.base.formants) this.base = {
+    const defaults = {
       frequency: 440, 
       gain: 1,
       formants: [
@@ -73,38 +94,97 @@ export class FormantVoice extends SineVoice {
         { freq: 2500, Q: 5 },
       ],
     };
-    
+
+    this.base = {
+      ...defaults,
+      ...this.base,
+      formants: this.base?.formants ?? defaults.formants,
+    };
+
+    this.osc.disconnect();
+
     this.filters = this.base.formants.map((formant: { freq: number, Q: number }) => {
-      const filter = ctx.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = formant.freq;
-      filter.Q.value = formant.Q;
-      this.osc.disconnect();
-      this.osc.connect(filter).connect(this.adsr.input());
+      const filter = new Tone.Filter({
+        type: "bandpass",
+        frequency: formant.freq,
+        Q: formant.Q,
+      });
+
+      this.osc.connect(filter);
+      filter.connect(this.adsr.input());
+
       return filter;
     });
+  }
+
+  output() { return this.gain; }
+}
+
+export class FMVoice extends Voice {
+  fmsynth: Tone.FMSynth;
+  gain: GainNode;
+  
+  constructor(ctx: AudioContext, base?: any) {
+    super(ctx, base);
+    this.fmsynth = new Tone.FMSynth();
+    this.gain = ctx.createGain();
+    this.fmsynth.connect(this.gain);
+    
+    if (!this.base) this.base = {
+      frequency: 440, 
+      gain: 1,
+    };
+
+    this.fmsynth.frequency.value = this.base.frequency;
+    this.fmsynth.volume.value = -Infinity;
   }
   
   updaters(delta?: { time: number, frequency: number, gain: number }) {
     return {
       frequency: {
-        object: this.osc.frequency,
-        update_fn: this.osc.frequency.linearRampToValueAtTime,
+        object: this.fmsynth.frequency,
+        update_fn: this.fmsynth.frequency.linearRampToValueAtTime,
         args: [this.base.frequency * (delta?.frequency ?? 1), this.ctx.currentTime + AR_TICK_SIZE],
       },
+      gain: {
+        object: this.fmsynth.volume,
+        update_fn: this.fmsynth.volume.linearRampToValueAtTime,
+        args: [20 * Math.log10(this.base.gain * (delta?.gain ?? 1)), this.ctx.currentTime + AR_TICK_SIZE],
+      },
+    };
+  }
+  
+  output() { return this.gain; }
+}
+
+export class NoiseVoice extends Voice {
+  noise: Tone.Noise;
+  gain: GainNode;
+  
+  constructor(ctx: AudioContext, base?: any) {
+    super(ctx, base);
+    this.noise = new Tone.Noise("white").toDestination();
+    this.gain = ctx.createGain();
+    
+    if (!this.base) this.base = {
+      gain: 1,
+    };
+
+    this.noise.connect(this.gain);
+    this.gain.gain.value = 0;
+    this.noise.start();
+  }
+  
+  updaters(delta?: { time: number, gain: number }) {
+    return {
       gain: {
         object: this.gain.gain,
         update_fn: this.gain.gain.linearRampToValueAtTime,
         args: [this.base.gain * (delta?.gain ?? 1), this.ctx.currentTime + AR_TICK_SIZE],
       },
-      adsr: {
-        object: this.adsr,
-        update_fn: this.adsr.trig,
-        args: [this.ctx.currentTime + AR_TICK_SIZE],
-      }
     };
   }
-
+  
   output() { return this.gain; }
 }
 

@@ -28,24 +28,44 @@ const spaces = ref([]);
 let ctx;
 let output;
 
+function safeGainValue(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(3)) : value;
+}
+
+function inspectLevels(node) {
+  if (!node) return {};
+  return {
+    type: node.constructor?.name,
+    fanGain: safeGainValue(node.fanGain?.gain?.value),
+    gain: safeGainValue(node.gain?.gain?.value),
+    master: safeGainValue(node.master?.gain?.value),
+    dry: safeGainValue(node.dryGain?.gain?.value),
+    wet: safeGainValue(node.wetGain?.gain?.value),
+    output: safeGainValue(node.outputGain?.gain?.value),
+    eqLow: safeGainValue(node.eq?.low?.value),
+    eqMid: safeGainValue(node.eq?.mid?.value),
+    eqHigh: safeGainValue(node.eq?.high?.value),
+    filterFreq: safeGainValue(node.filter?.frequency?.value),
+  };
+}
+
 const startAudio = async () => {
-  await Tone.start();
   ctx = Tone.context;
 
   output = new Output(ctx);
-
+  
   setInterval(update, CONTROL_TIME);
+}
+
+const ensureAudioRunning = async () => {
+  await Tone.start();
+  if (ctx?.state !== 'running') {
+    await ctx.resume();
+  }
 }
 
 onMounted(async () => { startAudio(); });
 
-/* onMounted(async () => {
-  await Tone.start();
-  ctx = Tone.getContext();
-  console.log('Audio Context Started', ctx);
-
-});
- */
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (ctx && ctx.state !== 'closed') {
@@ -70,7 +90,9 @@ function update() {
   });
 }
 
-function addNode(type/*: 'voice' | 'space'*/) {
+async function addNode(type/*: 'voice' | 'space'*/) {
+  await ensureAudioRunning();
+
   const idx = type === 'voice' ? voices.value.length : spaces.value.length;
   const id = `${type}-${idx}`;
 
@@ -79,7 +101,7 @@ function addNode(type/*: 'voice' | 'space'*/) {
     node = VoiceFactory.createRandom(ctx);
     voices.value.push(node);
   } else if (type === 'space') {
-    node = SpaceFactory.createRandom(ctx);
+    node = SpaceFactory.create(ctx).randomize();
     node.connect(output);
     spaces.value.push(node);
   }
@@ -107,13 +129,22 @@ function getSpawnPosition(type) {
   }
 }
 
-function connect(source, target) {
+async function connect(source, target) {
+  await ensureAudioRunning();
+
   const src = flow.value.graph.get(source)
   const tgt = flow.value.graph.get(target)
   
   console.log(`connecting ${source} to ${target}`, src, tgt);
 
   if (!src || !tgt) return
+
+  console.log(src, tgt, src.output(), tgt.input());
+  console.table({
+    source: inspectLevels(src),
+    target: inspectLevels(tgt),
+    output: inspectLevels(output),
+  });
 
   try {
     src.connect(tgt)

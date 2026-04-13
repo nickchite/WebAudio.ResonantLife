@@ -1,5 +1,7 @@
 export const AR_TICK_SIZE = 0.020;
 
+import * as Tone from 'tone';
+
 export abstract class Node {
   ctx: AudioContext;
   nextTick: number;
@@ -16,13 +18,21 @@ export abstract class Node {
   }
 
   connect(destination: Node): Node {
-    this.output()?.connect(destination.input());
+    const source = this.output();
+    const target = destination.input();
+    if (source && target) {
+      Tone.connect(source as any, target as any);
+    }
     destination.fanGain.gain.value = 1 / ++destination.fanIn;
     return destination;
   }
 
   disconnect(destination: Node): void {
-    this.output()?.disconnect(destination.fanGain);
+    const source = this.output();
+    const target = destination.input();
+    if (source && target) {
+      Tone.disconnect(source as any, target as any);
+    }
     destination.fanGain.gain.value = 1 / Math.max(1, --destination.fanIn);
     return undefined;
   }
@@ -36,6 +46,6 @@ export abstract class Node {
   
   abstract updaters(delta?: { [param: string]: any }): Record<string, { object: Object, update_fn: Function, args: number[] }> | undefined;
   
-  abstract input(): AudioNode | undefined;
-  abstract output(): AudioNode | undefined;
+  abstract input(): any;
+  abstract output(): any;
 }

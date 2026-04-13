@@ -2,8 +2,106 @@ import { AR_TICK_SIZE, Node } from './node';
 import { Comb, AllPass } from './misc.ts';
 import { Random } from '../lib.ts';
 
+import * as Tone from 'tone';
+
 export abstract class Space extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
+}
+
+export class FullSpace extends Space {
+  reverb: Tone.Reverb;
+  eq: Tone.EQ3;
+  filter: Tone.Filter;
+  panner: Tone.Panner;
+  dryGain: Tone.Gain;
+  wetGain: Tone.Gain;
+  outputGain: Tone.Gain;
+
+  constructor(ctx: AudioContext, base?: any) {
+    super(ctx, base);
+
+    this.base = {
+      reverbTime: 2.5,
+      eq: [0, 0, 0],
+      filterFreq: 2500,
+      pannerPos: 0,
+      dry: 1,
+      wet: 0.35,
+      output: 1.2,
+      ...this.base,
+    };
+
+    this.reverb = new Tone.Reverb(3);
+    this.eq = new Tone.EQ3(this.base.eq[0], this.base.eq[1], this.base.eq[2]);
+    this.filter = new Tone.Filter(this.base.filterFreq, "lowpass").connect(this.eq);
+    this.panner = new Tone.Panner(this.base.pannerPos).connect(this.filter);
+
+    this.dryGain = new Tone.Gain(this.base.dry);
+    this.wetGain = new Tone.Gain(this.base.wet);
+    this.outputGain = new Tone.Gain(this.base.output);
+
+    this.eq.connect(this.dryGain);
+    this.eq.connect(this.reverb);
+    this.reverb.connect(this.wetGain);
+
+    this.dryGain.connect(this.outputGain);
+    this.wetGain.connect(this.outputGain);
+  }
+  
+  randomize() {
+    this.base = {
+      reverbTime: Random.uniform().linlin(0, 1, 1, 5).sample(),
+      eq: [Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample()],
+      filterFreq: Random.uniform().linlin(0, 1, 1200, 5000).sample(),
+      pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+      dry: Random.uniform().linlin(0, 1, 0.8, 1.2).sample(),
+      wet: Random.uniform().linlin(0, 1, 0.2, 0.6).sample(),
+      output: Random.uniform().linlin(0, 1, 1, 1.5).sample(),
+    }
+    return this;
+  }
+  
+  updaters() { return {
+      reverbTime: {
+        object: this.reverb,
+        update_fn: this.reverb.set,
+        args: [this.base.reverbTime],
+      },
+      eq: {
+        object: this.eq,
+        update_fn: this.eq.set,
+        args: [this.base.eq[0], this.base.eq[1], this.base.eq[2]],
+      },
+      filterFreq: {
+        object: this.filter.frequency,
+        update_fn: this.filter.frequency.exponentialRampToValueAtTime,
+        args: [this.base.filterFreq, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      pannerPos: {
+        object: this.panner.pan,
+        update_fn: this.panner.pan.linearRampToValueAtTime,
+        args: [this.base.pannerPos, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      dry: {
+        object: this.dryGain.gain,
+        update_fn: this.dryGain.gain.linearRampToValueAtTime,
+        args: [this.base.dry, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      wet: {
+        object: this.wetGain.gain,
+        update_fn: this.wetGain.gain.linearRampToValueAtTime,
+        args: [this.base.wet, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      output: {
+        object: this.outputGain.gain,
+        update_fn: this.outputGain.gain.linearRampToValueAtTime,
+        args: [this.base.output, this.ctx.currentTime + AR_TICK_SIZE],
+      }
+    };
+  }
+  
+  input() { return this.panner; }
+  output() { return this.outputGain; }
 }
 
 export class EmptySpace extends Space {
@@ -130,7 +228,7 @@ export class ReverbSpace extends Space {
   output(): AudioNode { return this.outputNode; }
 }
 
-type SpaceConstructor = new (ctx: AudioContext, base?: any) => Space;
+/* type SpaceConstructor = new (ctx: AudioContext, base?: any) => Space;
 
 export class SpaceFactory {
   static registry: Record<string, SpaceConstructor> = {
@@ -150,5 +248,21 @@ export class SpaceFactory {
     if (constructors.length === 0) throw new Error("No spaces registered");
     const ctor = constructors[Random.uniform().linlin(0, 1, 0, constructors.length).floor().sample()];
     return new ctor(ctx, base);
+  }
+} */
+
+export class SpaceFactory {
+  static create(ctx: AudioContext, base?: any): FullSpace {
+    const space = new FullSpace(ctx, base);
+    space.base = {
+      reverbTime: Random.uniform().linlin(0, 1, 1, 5).sample(),
+      filterFreq: Random.uniform().linlin(0, 1, 1200, 5000).sample(),
+      pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
+      eq: [Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample(), Random.uniform().linlin(0, 1, -6, 6).sample()],
+      dry: Random.uniform().linlin(0, 1, 0.8, 1.2).sample(),
+      wet: Random.uniform().linlin(0, 1, 0.2, 0.6).sample(),
+      output: Random.uniform().linlin(0, 1, 1, 1.5).sample(),
+    }
+    return space;
   }
 }

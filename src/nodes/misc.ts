@@ -7,7 +7,9 @@ export class Output extends Node {
   constructor(ctx: AudioContext) {
     super(ctx);
     this.master = ctx.createGain();
-    this.fanGain.connect(this.master).connect(Tone.getDestination().input.input.input);
+    this.master.gain.value = 0.8;
+    this.fanGain.connect(this.master);
+    Tone.connect(this.master as any, Tone.getDestination() as any);
   }
   
   input() { return this.fanGain; }
