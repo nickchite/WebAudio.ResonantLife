@@ -19,8 +19,10 @@ const flow = ref(null);
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 
-const shape = ref(0.5);
-const tempo = ref(120);
+const sineShape = ref(0.5);
+const sineTempo = ref(120);
+const formantShape = ref(0.5);
+const formantTempo = ref(120);
 
 const voices = ref([]);
 const spaces = ref([]);
@@ -80,8 +82,12 @@ if (import.meta.hot) {
 
 function update() {
   voices.value.forEach((voice) => {
-    voice.update({ 
-      time: Random.gamma_tempo(tempo.value, shape.value).sample(),
+    const isFormant = voice instanceof FormantVoice;
+    const voiceTempo = isFormant ? formantTempo.value : sineTempo.value;
+    const voiceShape = isFormant ? formantShape.value : sineShape.value;
+
+    voice.update({
+      time: Random.gamma_tempo(voiceTempo, voiceShape).sample(),
       frequency: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
       gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
     });
@@ -230,14 +236,31 @@ function disconnect(source, target) {
   <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, ctx.currentTime + 0.010)"
     type="range" min="0.0001" max="1" step="0.0001" value="0.5"
   />
-  <label for="tempo">tempo {{ tempo }}</label>
-  <input id='tempo' @input="event => tempo = event.target.value"
-    type="range" min="30" max="240" step="0.01" value="120"
-  />
-  <label for="scale">scale {{ shape }}</label>
-  <input id='scale' @input="event => shape = linexp(event.target.value, 0, 1, 0.1, 1000)"
-    type="range" min="0" max="1" step="0.0001" value="0.5"
-  />
+  <div class="voice-controls">
+    <div class="voice-controls-column">
+      <strong>Sine</strong>
+      <label for="tempo-sine">tempo {{ sineTempo }}</label>
+      <input id='tempo-sine' @input="event => sineTempo = Number(event.target.value)"
+        type="range" min="30" max="240" step="0.01" :value="sineTempo"
+      />
+      <label for="scale-sine">scale {{ sineShape }}</label>
+      <input id='scale-sine' @input="event => sineShape = linexp(Number(event.target.value), 0, 1, 0.1, 1000)"
+        type="range" min="0" max="1" step="0.0001" value="0.5"
+      />
+    </div>
+
+    <div class="voice-controls-column">
+      <strong>Formant</strong>
+      <label for="tempo-formant">tempo {{ formantTempo }}</label>
+      <input id='tempo-formant' @input="event => formantTempo = Number(event.target.value)"
+        type="range" min="30" max="240" step="0.01" :value="formantTempo"
+      />
+      <label for="scale-formant">scale {{ formantShape }}</label>
+      <input id='scale-formant' @input="event => formantShape = linexp(Number(event.target.value), 0, 1, 0.1, 1000)"
+        type="range" min="0" max="1" step="0.0001" value="0.5"
+      />
+    </div>
+  </div>
   <div id="flow" style="height: 75vh; width: 100vw;">
     <Flow
       ref="flow"
@@ -246,3 +269,20 @@ function disconnect(source, target) {
     />
   </div>
 </template>
+
+<style scoped>
+.voice-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+.voice-controls-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 50%;
+}
+</style>
