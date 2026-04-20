@@ -32,11 +32,15 @@ const {
   onMoveEnd,
   addNodes,
   addEdges,
+  removeNodes,
+  removeEdges,
 } = useVueFlow()
 
 defineExpose({
   addNodes,
   addEdges,
+  removeNodes,
+  removeEdges,
   graph
 });
 

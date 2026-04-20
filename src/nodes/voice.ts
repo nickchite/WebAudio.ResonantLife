@@ -9,6 +9,10 @@ import * as Tone from 'tone';
 export abstract class Voice extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
   input() { return undefined }
+
+  dispose() {
+    super.dispose();
+  }
 }
 
 export class SineVoice extends Voice {
@@ -131,6 +135,42 @@ export class SineVoice extends Voice {
   }
 
   output() { return this.gain; }
+
+  dispose() {
+    try {
+      this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.gain.gain.setValueAtTime(this.gain.gain.value, this.ctx.currentTime);
+      this.gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.02);
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.osc.stop(this.ctx.currentTime + 0.03);
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.osc.disconnect();
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.adsr.output().disconnect();
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.gain.disconnect();
+    } catch {
+      // no-op
+    }
+
+    super.dispose();
+  }
 }
 
 export class FormantVoice extends SineVoice {
@@ -228,6 +268,18 @@ export class FormantVoice extends SineVoice {
   }
 
   output() { return this.gain; }
+
+  dispose() {
+    this.filters.forEach((filter) => {
+      try {
+        filter.disconnect();
+      } catch {
+        // no-op
+      }
+    });
+
+    super.dispose();
+  }
 }
 
 export class FMVoice extends Voice {
@@ -265,6 +317,23 @@ export class FMVoice extends Voice {
   }
   
   output() { return this.gain; }
+
+  dispose() {
+    try {
+      this.fmsynth.disconnect();
+      this.fmsynth.dispose();
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.gain.disconnect();
+    } catch {
+      // no-op
+    }
+
+    super.dispose();
+  }
 }
 
 export class NoiseVoice extends Voice {
@@ -296,6 +365,28 @@ export class NoiseVoice extends Voice {
   }
   
   output() { return this.gain; }
+
+  dispose() {
+    try {
+      this.noise.stop();
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.noise.disconnect();
+    } catch {
+      // no-op
+    }
+
+    try {
+      this.gain.disconnect();
+    } catch {
+      // no-op
+    }
+
+    super.dispose();
+  }
 }
 
 type VoiceConstructor = new (ctx: AudioContext, base: any) => Voice;
@@ -318,5 +409,35 @@ export class VoiceFactory {
     const [, ctor] = entries[Random.uniform().linlin(0, 1, 0, entries.length).floor().sample()];
     const randomBase = (ctor as any).randomize ? (ctor as any).randomize() : {};
     return new ctor(ctx, { ...randomBase, ...base });
+  }
+
+  static createNamed(ctx: AudioContext, name: string, base?: any): Voice {
+    const ctor = this.registry[name];
+    if (!ctor) throw new Error(`Voice ${name} is not registered`);
+    const randomBase = (ctor as any).randomize ? (ctor as any).randomize() : {};
+    return new ctor(ctx, { ...randomBase, ...base });
+  }
+
+  static createWeighted(ctx: AudioContext, weights: Record<string, number>, base?: any): Voice {
+    const entries = Object.entries(this.registry)
+      .map(([name, ctor]) => ({ name, ctor, weight: Math.max(0, weights[name] ?? 0) }))
+      .filter((entry) => entry.weight > 0);
+
+    if (entries.length === 0) return this.createRandom(ctx, base);
+
+    const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+    let r = Math.random() * total;
+
+    for (const entry of entries) {
+      r -= entry.weight;
+      if (r <= 0) {
+        const randomBase = (entry.ctor as any).randomize ? (entry.ctor as any).randomize() : {};
+        return new entry.ctor(ctx, { ...randomBase, ...base });
+      }
+    }
+
+    const fallback = entries[entries.length - 1];
+    const randomBase = (fallback.ctor as any).randomize ? (fallback.ctor as any).randomize() : {};
+    return new fallback.ctor(ctx, { ...randomBase, ...base });
   }
 }

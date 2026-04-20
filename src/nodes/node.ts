@@ -55,6 +55,15 @@ export abstract class Node {
   }
   
   abstract updaters(delta?: { [param: string]: any }): Record<string, { object: Object, update_fn: Function, args: number[] }> | undefined;
+
+  // Override in subclasses to release external resources like oscillators.
+  dispose() {
+    try {
+      this.fanGain.disconnect();
+    } catch {
+      // no-op
+    }
+  }
   
   abstract input(): any;
   abstract output(): any;

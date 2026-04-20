@@ -6,6 +6,10 @@ import * as Tone from 'tone';
 
 export abstract class Space extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
+
+  dispose() {
+    super.dispose();
+  }
 }
 
 export class FullSpace extends Space {
@@ -154,6 +158,17 @@ export class FullSpace extends Space {
   
   input() { return this.panner; }
   output() { return this.outputGain; }
+
+  dispose() {
+    try { this.panner.disconnect(); } catch {}
+    try { this.filter.disconnect(); } catch {}
+    try { this.eq.disconnect(); } catch {}
+    try { this.reverb.disconnect(); } catch {}
+    try { this.dryGain.disconnect(); } catch {}
+    try { this.wetGain.disconnect(); } catch {}
+    try { this.outputGain.disconnect(); } catch {}
+    super.dispose();
+  }
 }
 
 export class EmptySpace extends Space {
@@ -169,6 +184,11 @@ export class EmptySpace extends Space {
   
   input() { return this.gain }
   output() { return this.gain }
+
+  dispose() {
+    try { this.gain.disconnect(); } catch {}
+    super.dispose();
+  }
 }
 
 export class DelaySpace extends Space {
@@ -213,6 +233,13 @@ export class DelaySpace extends Space {
   
   input() { return this.fanGain; }
   output() { return this.delay; }
+
+  dispose() {
+    try { this.delay.disconnect(); } catch {}
+    try { this.feedback.disconnect(); } catch {}
+    try { this.feedforward.disconnect(); } catch {}
+    super.dispose();
+  }
 }
 
 export class ReverbSpace extends Space {
@@ -278,6 +305,23 @@ export class ReverbSpace extends Space {
 
   input(): AudioNode { return this.fanGain; }
   output(): AudioNode { return this.outputNode; }
+
+  dispose() {
+    this.combs.forEach((comb) => {
+      try { comb.input().disconnect(); } catch {}
+      try { comb.output().disconnect(); } catch {}
+    });
+
+    this.allpasses.forEach((allPass) => {
+      try { allPass.input().disconnect(); } catch {}
+      try { allPass.output().disconnect(); } catch {}
+    });
+
+    try { this.wetGain.disconnect(); } catch {}
+    try { this.dryGain.disconnect(); } catch {}
+    try { this.outputNode.disconnect(); } catch {}
+    super.dispose();
+  }
 }
 
 /* type SpaceConstructor = new (ctx: AudioContext, base?: any) => Space;
