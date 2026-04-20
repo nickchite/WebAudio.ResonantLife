@@ -40,6 +40,9 @@ const ROOT_CLOCK_SHAPE_LO = 2.5;
 const ROOT_CLOCK_SHAPE_HI = 12;
 const HARMONIC_INDEX_POOL = [1, 2, 3, 4, 5, 6, 8];
 const ROOT_HARMONICITY_STEEPNESS = 8;
+const CONTROL_INPUT_SPEED_PER_SEC = 0.12;
+
+const activePad = ref(null);
 
 function clamp01(value) {
   return Math.min(1, Math.max(0, value));
@@ -81,6 +84,11 @@ function bpmFromDensity(density) {
 const sineDensity = ref(densityFromBpm(DENSITY_MIN_BPM));
 const formantDensity = ref(densityFromBpm(DENSITY_MIN_BPM));
 
+const sineCoherenceActual = ref(sineCoherence.value);
+const formantCoherenceActual = ref(formantCoherence.value);
+const sineDensityActual = ref(sineDensity.value);
+const formantDensityActual = ref(formantDensity.value);
+
 const voices = ref([]);
 const spaces = ref([]);
 const suppressedEdgeAdds = new Set();
@@ -116,6 +124,25 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function moveToward(current, target, maxStep) {
+  const delta = target - current;
+  if (Math.abs(delta) <= maxStep) return target;
+  return current + Math.sign(delta) * maxStep;
+}
+
+function moveToward2D(currentX, currentY, targetX, targetY, maxStep) {
+  const dx = targetX - currentX;
+  const dy = targetY - currentY;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance <= maxStep || distance === 0) {
+    return [targetX, targetY];
+  }
+
+  const scale = maxStep / distance;
+  return [currentX + dx * scale, currentY + dy * scale];
+}
+
 function coherenceStepSize(coherence, harmonicStep = 100, minStep = 0.25) {
   const c = Math.min(1, Math.max(0, coherence));
   const ratio = minStep / harmonicStep;
@@ -147,11 +174,68 @@ function estimatePitchCenterHz() {
 }
 
 function globalDensityValue() {
-  return clamp01((sineDensity.value + formantDensity.value) / 2);
+  return clamp01((sineDensityActual.value + formantDensityActual.value) / 2);
 }
 
 function globalCoherenceValue() {
-  return clamp01((sineCoherence.value + formantCoherence.value) / 2);
+  return clamp01((sineCoherenceActual.value + formantCoherenceActual.value) / 2);
+}
+
+function setPadTarget(type, event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = clamp01((event.clientX - rect.left) / rect.width);
+  const y = clamp01((event.clientY - rect.top) / rect.height);
+  const density = 1 - y;
+
+  if (type === 'sine') {
+    sineCoherence.value = x;
+    sineDensity.value = density;
+    return;
+  }
+
+  formantCoherence.value = x;
+  formantDensity.value = density;
+}
+
+function startPadDrag(type, event) {
+  activePad.value = type;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  setPadTarget(type, event);
+}
+
+function movePadDrag(type, event) {
+  if (activePad.value !== type) return;
+  setPadTarget(type, event);
+}
+
+function endPadDrag(event) {
+  activePad.value = null;
+  if (event.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+}
+
+function updateSmoothedControls() {
+  const maxStep = CONTROL_INPUT_SPEED_PER_SEC * (CONTROL_TIME / 1000);
+  const [nextSineC, nextSineD] = moveToward2D(
+    sineCoherenceActual.value,
+    sineDensityActual.value,
+    sineCoherence.value,
+    sineDensity.value,
+    maxStep,
+  );
+  const [nextFormantC, nextFormantD] = moveToward2D(
+    formantCoherenceActual.value,
+    formantDensityActual.value,
+    formantCoherence.value,
+    formantDensity.value,
+    maxStep,
+  );
+
+  sineCoherenceActual.value = nextSineC;
+  sineDensityActual.value = nextSineD;
+  formantCoherenceActual.value = nextFormantC;
+  formantDensityActual.value = nextFormantD;
 }
 
 function rootClockBpmFromGlobalDensity(globalDensity) {
@@ -285,14 +369,15 @@ if (import.meta.hot) {
 
 
 function update() {
+  updateSmoothedControls();
   updateHarmonicRootScheduler();
 
   voices.value.forEach((voice) => {
     const isFormant = voice instanceof FormantVoice;
-    const voiceCoherence = isFormant ? formantCoherence.value : sineCoherence.value;
+    const voiceCoherence = isFormant ? formantCoherenceActual.value : sineCoherenceActual.value;
     const voiceDensity = isFormant
-      ? bpmFromDensity(formantDensity.value)
-      : bpmFromDensity(sineDensity.value);
+      ? bpmFromDensity(formantDensityActual.value)
+      : bpmFromDensity(sineDensityActual.value);
 
     if (voiceDensity <= 0) return;
 
@@ -442,33 +527,61 @@ function disconnect(source, target) {
   <input id='gain' @input="event => output.master.gain.exponentialRampToValueAtTime(event.target.value, ctx.currentTime + 0.010)"
     type="range" min="0.0001" max="1" step="0.0001" value="0.5"
   />
-  <div class="voice-controls">
-    <div class="voice-controls-column">
-      <strong>Sine Coherence</strong>
-      <label for="coherence-sine">{{ sineCoherence.toFixed(2) }}</label>
-      <input id='coherence-sine' @input="event => sineCoherence = Number(event.target.value)"
-        type="range" min="0" max="1" step="0.0001" :value="sineCoherence"
-      />
-
-      <strong>Sine Density</strong>
-      <label for="density-sine">{{ bpmFromDensity(sineDensity).toFixed(1) }}</label>
-      <input id='density-sine' @input="event => sineDensity = Number(event.target.value)"
-        type="range" min="0" max="1" step="0.0001" :value="sineDensity"
-      />
+  <div class="xy-controls">
+    <div class="xy-column">
+      <strong>Sine XY</strong>
+      <div
+        class="xy-pad"
+        @pointerdown="event => startPadDrag('sine', event)"
+        @pointermove="event => movePadDrag('sine', event)"
+        @pointerup="endPadDrag"
+        @pointercancel="endPadDrag"
+      >
+        <div
+          class="xy-dot xy-dot-target"
+          :style="{
+            left: (sineCoherence * 100) + '%',
+            top: ((1 - sineDensity) * 100) + '%'
+          }"
+        ></div>
+        <div
+          class="xy-dot xy-dot-actual"
+          :style="{
+            left: (sineCoherenceActual * 100) + '%',
+            top: ((1 - sineDensityActual) * 100) + '%'
+          }"
+        ></div>
+        <div class="xy-axis xy-axis-x">coherence</div>
+        <div class="xy-axis xy-axis-y">density</div>
+      </div>
     </div>
 
-    <div class="voice-controls-column">
-      <strong>Formant Coherence</strong>
-      <label for="coherence-formant">{{ formantCoherence.toFixed(2) }}</label>
-      <input id='coherence-formant' @input="event => formantCoherence = Number(event.target.value)"
-        type="range" min="0" max="1" step="0.0001" :value="formantCoherence"
-      />
-
-      <strong>Formant Density</strong>
-      <label for="density-formant">{{ bpmFromDensity(formantDensity).toFixed(1) }}</label>
-      <input id='density-formant' @input="event => formantDensity = Number(event.target.value)"
-        type="range" min="0" max="1" step="0.0001" :value="formantDensity"
-      />
+    <div class="xy-column">
+      <strong>Formant XY</strong>
+      <div
+        class="xy-pad"
+        @pointerdown="event => startPadDrag('formant', event)"
+        @pointermove="event => movePadDrag('formant', event)"
+        @pointerup="endPadDrag"
+        @pointercancel="endPadDrag"
+      >
+        <div
+          class="xy-dot xy-dot-target"
+          :style="{
+            left: (formantCoherence * 100) + '%',
+            top: ((1 - formantDensity) * 100) + '%'
+          }"
+        ></div>
+        <div
+          class="xy-dot xy-dot-actual"
+          :style="{
+            left: (formantCoherenceActual * 100) + '%',
+            top: ((1 - formantDensityActual) * 100) + '%'
+          }"
+        ></div>
+        <div class="xy-axis xy-axis-x">coherence</div>
+        <div class="xy-axis xy-axis-y">density</div>
+      </div>
     </div>
   </div>
   <div id="flow" style="height: 75vh; width: 100vw;">
@@ -481,18 +594,109 @@ function disconnect(source, target) {
 </template>
 
 <style scoped>
-.voice-controls {
-  display: flex;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin: 0.75rem 0;
+.xy-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin: 0.75rem 0 1rem;
 }
 
-.voice-controls-column {
+.xy-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  width: 50%;
+  gap: 0.4rem;
+}
+
+.xy-pad {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 160, 110, 0.26), transparent 42%),
+    radial-gradient(circle at 80% 80%, rgba(110, 210, 255, 0.22), transparent 45%),
+    linear-gradient(145deg, #1b1f26, #101318);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 12px 26px rgba(0, 0, 0, 0.3);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.xy-pad::before,
+.xy-pad::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.22;
+}
+
+.xy-pad::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed rgba(255, 255, 255, 0.35);
+}
+
+.xy-pad::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 1px dashed rgba(255, 255, 255, 0.35);
+}
+
+.xy-dot {
+  position: absolute;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.xy-dot-target {
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.2),
+    0 0 18px rgba(255, 255, 255, 0.42);
+}
+
+.xy-dot-actual {
+  width: 26px;
+  height: 26px;
+  background: rgba(200, 215, 235, 0.35);
+  border: 1px solid rgba(220, 230, 245, 0.45);
+  box-shadow: 0 0 20px rgba(175, 200, 230, 0.28);
+}
+
+.xy-axis {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  pointer-events: none;
+}
+
+.xy-axis-x {
+  left: 50%;
+  bottom: 0.45rem;
+  transform: translateX(-50%);
+}
+
+.xy-axis-y {
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.14em;
+}
+
+@media (max-width: 760px) {
+  .xy-controls {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
