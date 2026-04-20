@@ -4,6 +4,7 @@ import { FormantVoice, VoiceFactory } from '../nodes/voice.ts';
 import { SpaceFactory } from '../nodes/space.ts';
 import { ROOT_MOTION } from '../config/rootMotion.js';
 import { bpmFromDensity, clamp01, DENSITY_MAX_BPM, lerp } from '../utils/controlMath.ts';
+import { ref } from 'vue';
 
 import * as Tone from 'tone';
 
@@ -14,21 +15,35 @@ const HARMONIC_ROOT_MAX_HZ = 110;
 const HARMONIC_INDEX_POOL = [1, 2, 3, 4, 5, 6, 8];
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
-const CONTROL_INPUT_SPEED_PER_SEC = 0.12;
 const DEBUG_AUDIO_GRAPH = import.meta.env.DEV && import.meta.env.VITE_DEBUG_AUDIO_GRAPH === '1';
 
 export function useResonantEngine(options) {
   const {
     flow,
-    sineCoherence,
-    formantCoherence,
-    sineDensity,
-    formantDensity,
-    sineCoherenceActual,
-    formantCoherenceActual,
-    sineDensityActual,
-    formantDensityActual,
   } = options;
+
+  function createControl(initial = 0.5) {
+    const coherence = ref(initial);
+    const density = ref(initial);
+
+    function setCoherence(value) { coherence.value = value; }
+    function setDensity(value) { density.value = value; }
+    function set(values = {}) {
+      if (values.coherence !== undefined) setCoherence(values.coherence);
+      if (values.density !== undefined) setDensity(values.density);
+    }
+
+    return {
+      coherence,
+      density,
+      setCoherence,
+      setDensity,
+      set,
+    };
+  }
+
+  const sine = createControl(0.5);
+  const formant = createControl(0.5);
 
   const voices = [];
   const spaces = [];
@@ -81,19 +96,6 @@ export function useResonantEngine(options) {
     };
   }
 
-  function moveToward2D(currentX, currentY, targetX, targetY, maxStep) {
-    const dx = targetX - currentX;
-    const dy = targetY - currentY;
-    const distance = Math.hypot(dx, dy);
-
-    if (distance <= maxStep || distance === 0) {
-      return [targetX, targetY];
-    }
-
-    const scale = maxStep / distance;
-    return [currentX + dx * scale, currentY + dy * scale];
-  }
-
   function coherenceStepSize(coherence, harmonicStep = 100, minStep = 0.25) {
     const c = Math.min(1, Math.max(0, coherence));
     const ratio = minStep / harmonicStep;
@@ -125,11 +127,11 @@ export function useResonantEngine(options) {
   }
 
   function globalDensityValue() {
-    return clamp01((sineDensityActual.value + formantDensityActual.value) / 2);
+    return clamp01((sine.density.value + formant.density.value) / 2);
   }
 
   function globalCoherenceValue() {
-    return clamp01((sineCoherenceActual.value + formantCoherenceActual.value) / 2);
+    return clamp01((sine.coherence.value + formant.coherence.value) / 2);
   }
 
   function nextNodeId(type) {
@@ -158,29 +160,6 @@ export function useResonantEngine(options) {
 
   function forgetEdge(source, target) {
     edgeKeys.delete(edgeKey(source, target));
-  }
-
-  function updateSmoothedControls() {
-    const maxStep = CONTROL_INPUT_SPEED_PER_SEC * (CONTROL_TIME / 1000);
-    const [nextSineC, nextSineD] = moveToward2D(
-      sineCoherenceActual.value,
-      sineDensityActual.value,
-      sineCoherence.value,
-      sineDensity.value,
-      maxStep,
-    );
-    const [nextFormantC, nextFormantD] = moveToward2D(
-      formantCoherenceActual.value,
-      formantDensityActual.value,
-      formantCoherence.value,
-      formantDensity.value,
-      maxStep,
-    );
-
-    sineCoherenceActual.value = nextSineC;
-    sineDensityActual.value = nextSineD;
-    formantCoherenceActual.value = nextFormantC;
-    formantDensityActual.value = nextFormantD;
   }
 
   function rootClockBpmFromGlobalDensity(globalDensity) {
@@ -305,15 +284,14 @@ export function useResonantEngine(options) {
   function update() {
     if (!ctx || !flow.value?.graph) return;
 
-    updateSmoothedControls();
     updateHarmonicRootScheduler();
 
     voices.forEach((voice) => {
       const isFormant = voice instanceof FormantVoice;
-      const voiceCoherence = isFormant ? formantCoherenceActual.value : sineCoherenceActual.value;
+      const voiceCoherence = isFormant ? formant.coherence.value : sine.coherence.value;
       const voiceDensity = isFormant
-        ? bpmFromDensity(formantDensityActual.value)
-        : bpmFromDensity(sineDensityActual.value);
+        ? bpmFromDensity(formant.density.value)
+        : bpmFromDensity(sine.density.value);
 
       if (voiceDensity <= 0) return;
 
@@ -524,5 +502,7 @@ export function useResonantEngine(options) {
     disconnect,
     addNode,
     removeNodeById,
+    sine,
+    formant,
   };
 }

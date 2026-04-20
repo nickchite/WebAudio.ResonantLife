@@ -7,39 +7,19 @@ import { useResonantEngine } from './composables/useResonantEngine.js'
 
 const flow = ref(null);
 
-const sineCoherence = ref(0.5);
-const formantCoherence = ref(0.5);
 const XY_DOT_RADIUS_PX = 10;
 const XY_ACTUAL_DOT_RADIUS_PX = 13;
-
-const sineDensity = ref(0.5);
-const formantDensity = ref(0.5);
-
-const sineCoherenceActual = ref(sineCoherence.value);
-const formantCoherenceActual = ref(formantCoherence.value);
-const sineDensityActual = ref(sineDensity.value);
-const formantDensityActual = ref(formantDensity.value);
-
-function updateSineCoherence(value) { sineCoherence.value = value; }
-function updateSineDensity(value) { sineDensity.value = value; }
-function updateFormantCoherence(value) { formantCoherence.value = value; }
-function updateFormantDensity(value) { formantDensity.value = value; }
+const XY_SLEW_RATE = 0.12;
 
 const {
   connect,
   disconnect,
   startAudio,
   disposeAudio,
+  sine,
+  formant,
 } = useResonantEngine({
   flow,
-  sineCoherence,
-  formantCoherence,
-  sineDensity,
-  formantDensity,
-  sineCoherenceActual,
-  formantCoherenceActual,
-  sineDensityActual,
-  formantDensityActual,
 });
 
 onMounted(async () => { startAudio(); });
@@ -58,27 +38,25 @@ if (import.meta.hot) {
       title="Sine XY"
       x-label="coherence"
       y-label="density"
-      :x="sineCoherence"
-      :y="sineDensity"
-      :actual-x="sineCoherenceActual"
-      :actual-y="sineDensityActual"
+      :initial-x="0.5"
+      :initial-y="0.5"
       :dot-radius-px="XY_DOT_RADIUS_PX"
       :actual-dot-radius-px="XY_ACTUAL_DOT_RADIUS_PX"
-      @update:x="updateSineCoherence"
-      @update:y="updateSineDensity"
+      :slew-rate="XY_SLEW_RATE"
+      @update:actualX="sine.setCoherence"
+      @update:actualY="sine.setDensity"
     />
     <XYPad
       title="Formant XY"
       x-label="coherence"
       y-label="density"
-      :x="formantCoherence"
-      :y="formantDensity"
-      :actual-x="formantCoherenceActual"
-      :actual-y="formantDensityActual"
+      :initial-x="0.5"
+      :initial-y="0.5"
       :dot-radius-px="XY_DOT_RADIUS_PX"
       :actual-dot-radius-px="XY_ACTUAL_DOT_RADIUS_PX"
-      @update:x="updateFormantCoherence"
-      @update:y="updateFormantDensity"
+      :slew-rate="XY_SLEW_RATE"
+      @update:actualX="formant.setCoherence"
+      @update:actualY="formant.setDensity"
     />
   </div>
   <div id="flow" style="height: 75vh; width: 100vw;">

@@ -9,11 +9,19 @@ const props = defineProps({
   },
   x: {
     type: Number,
-    required: true,
+    default: null,
   },
   y: {
     type: Number,
-    required: true,
+    default: null,
+  },
+  initialX: {
+    type: Number,
+    default: 0.5,
+  },
+  initialY: {
+    type: Number,
+    default: 0.5,
   },
   actualX: {
     type: Number,
@@ -77,8 +85,11 @@ const emit = defineEmits(['update:x', 'update:y', 'update:actualX', 'update:actu
 
 const dragging = ref(false)
 const activePointerId = ref(null)
+const internalTargetXUnit = ref(0.5)
+const internalTargetYUnit = ref(0.5)
 const internalActualXUnit = ref(0)
 const internalActualYUnit = ref(0)
+const internalActualInitialized = ref(false)
 
 const AXIS_X = 'x'
 const AXIS_Y = 'y'
@@ -124,6 +135,10 @@ function hasExternalActual() {
   return props.actualX !== null && props.actualY !== null
 }
 
+function isControlledTarget() {
+  return props.x !== null && props.y !== null
+}
+
 function axisToUnit(axis, value) {
   const toUnit = axis === AXIS_X ? props.xToUnit : props.yToUnit
   return clamp(toUnit(value), 0, 1)
@@ -167,8 +182,8 @@ function runSlewFrame(timestampMs) {
   const dtSec = lastFrameMs > 0 ? Math.max(0, (timestampMs - lastFrameMs) / 1000) : 0
   lastFrameMs = timestampMs
 
-  const targetXUnit = axisToUnit(AXIS_X, props.x)
-  const targetYUnit = axisToUnit(AXIS_Y, props.y)
+  const targetXUnit = axisToUnit(AXIS_X, currentTargetAxisValue(AXIS_X))
+  const targetYUnit = axisToUnit(AXIS_Y, currentTargetAxisValue(AXIS_Y))
 
   if (props.slewRate <= 0) {
     internalActualXUnit.value = targetXUnit
@@ -205,14 +220,22 @@ function startSlewAnimation() {
     return
   }
 
-  lastFrameMs = 0
   if (animationFrameId === null) {
+    lastFrameMs = 0
     animationFrameId = requestAnimationFrame(runSlewFrame)
   }
 }
 
+function currentTargetAxisValue(axis) {
+  if (isControlledTarget()) {
+    return axis === AXIS_X ? props.x : props.y
+  }
+  const internalUnit = axis === AXIS_X ? internalTargetXUnit.value : internalTargetYUnit.value
+  return unitToAxisValue(axis, internalUnit)
+}
+
 function targetPercent(axis) {
-  const value = axis === AXIS_X ? props.x : props.y
+  const value = currentTargetAxisValue(axis)
   return axisCssPosition(axis, axisToUnit(axis, value))
 }
 
@@ -235,8 +258,9 @@ function axisCssPosition(axis, unit) {
 
 function syncInternalActualFromTarget() {
   if (hasExternalActual()) return
-  internalActualXUnit.value = axisToUnit(AXIS_X, props.x)
-  internalActualYUnit.value = axisToUnit(AXIS_Y, props.y)
+  internalActualXUnit.value = axisToUnit(AXIS_X, currentTargetAxisValue(AXIS_X))
+  internalActualYUnit.value = axisToUnit(AXIS_Y, currentTargetAxisValue(AXIS_Y))
+  internalActualInitialized.value = true
   emitInternalActual()
 }
 
@@ -248,6 +272,12 @@ function setTargetFromEvent(event) {
   const xUnit = clamp((event.clientX - rect.left - insetPx) / usableWidth, 0, 1)
   const yTopUnit = clamp((event.clientY - rect.top - insetPx) / usableHeight, 0, 1)
   const yUnit = 1 - yTopUnit
+
+  if (!isControlledTarget()) {
+    internalTargetXUnit.value = xUnit
+    internalTargetYUnit.value = yUnit
+    startSlewAnimation()
+  }
 
   emit('update:x', unitToAxisValue(AXIS_X, xUnit))
   emit('update:y', unitToAxisValue(AXIS_Y, yUnit))
@@ -277,8 +307,28 @@ function onPointerEnd(event) {
 watch(
   () => [props.x, props.y, props.slewRate, props.xToUnit, props.yToUnit, props.unitToX, props.unitToY],
   () => {
+    if (isControlledTarget()) {
+      internalTargetXUnit.value = axisToUnit(AXIS_X, props.x)
+      internalTargetYUnit.value = axisToUnit(AXIS_Y, props.y)
+    }
     if (hasExternalActual()) return
+    if (!internalActualInitialized.value) {
+      syncInternalActualFromTarget()
+    }
     startSlewAnimation()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [props.initialX, props.initialY],
+  () => {
+    if (isControlledTarget()) return
+    internalTargetXUnit.value = axisToUnit(AXIS_X, props.initialX)
+    internalTargetYUnit.value = axisToUnit(AXIS_Y, props.initialY)
+    if (!internalActualInitialized.value) {
+      syncInternalActualFromTarget()
+    }
   },
   { immediate: true },
 )
@@ -288,6 +338,7 @@ watch(
   () => {
     if (hasExternalActual()) {
       cancelSlewAnimation()
+      internalActualInitialized.value = false
       return
     }
     syncInternalActualFromTarget()
