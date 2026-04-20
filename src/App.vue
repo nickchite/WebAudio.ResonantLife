@@ -19,10 +19,22 @@ const flow = ref(null);
 const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 
-const sineShape = ref(0.5);
-const sineTempo = ref(120);
-const formantShape = ref(0.5);
-const formantTempo = ref(120);
+const sineCoherence = ref(0);
+const formantCoherence = ref(0);
+
+const DENSITY_MIN_BPM = 10;
+const DENSITY_MAX_BPM = 300;
+
+function densityFromBpm(bpm) {
+  return Math.log(bpm / DENSITY_MIN_BPM) / Math.log(DENSITY_MAX_BPM / DENSITY_MIN_BPM);
+}
+
+function bpmFromDensity(density) {
+  return linexp(density, 0, 1, DENSITY_MIN_BPM, DENSITY_MAX_BPM);
+}
+
+const sineDensity = ref(densityFromBpm(DENSITY_MIN_BPM));
+const formantDensity = ref(densityFromBpm(DENSITY_MIN_BPM));
 
 const voices = ref([]);
 const spaces = ref([]);
@@ -51,6 +63,71 @@ function inspectLevels(node) {
     eqHigh: safeGainValue(node.eq?.high?.value),
     filterFreq: safeGainValue(node.filter?.frequency?.value),
   };
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function quantizeFrequencyDivision(freq, rootFreq = 110, divisions = 6) {
+  const ratio = Math.max(1e-6, freq / rootFreq);
+  const stepPosition = Math.log2(ratio) * divisions;
+  const snapped = Math.round(stepPosition);
+  return rootFreq * Math.pow(2, snapped / divisions);
+}
+
+function ratioFromSemitoneSpread(maxSemitones) {
+  const semis = Random.uniform().linlin(0, 1, -maxSemitones, maxSemitones).sample();
+  return Math.pow(2, semis / 12);
+}
+
+function envelopeRatio(spread) {
+  return Random.uniform().linexp(0, 1, 1 / spread, spread).sample();
+}
+
+function buildVoiceDelta(voice, voiceCoherence, isFormant, densityBpm) {
+  const c = voiceCoherence;
+  const shapeMul = linexp(c, 0, 1, 0.3, 3.0);
+  const jitterSpread = lerp(2.2, 1.03, c);
+  const maxFreqSemis = lerp(7.0, 0.6, c);
+  const gainSpread = lerp(1.8, 1.1, c);
+  const envSpread = isFormant
+    ? lerp(3.0, 1.08, c)
+    : lerp(1.7, 1.05, c);
+  const quantizeMix = c;
+  const divisions = Math.round(lerp(36, 6, c));
+
+  const baseTempo = densityBpm;
+  const baseShape = 0.5;
+  const shapeNow = Math.max(0.1, baseShape * shapeMul);
+  const baseTime = Random.gamma_tempo(baseTempo, shapeNow).sample();
+  const time = baseTime * Random.uniform().linexp(0, 1, 1 / jitterSpread, jitterSpread).sample();
+
+  const rawFreq = voice.base.frequency * ratioFromSemitoneSpread(maxFreqSemis);
+  const quantized = quantizeFrequencyDivision(rawFreq, 110, divisions);
+  const finalFreq = lerp(rawFreq, quantized, quantizeMix);
+
+  const delta = {
+    time,
+    frequency: finalFreq / voice.base.frequency,
+    gain: Random.uniform().linexp(0, 1, 1 / gainSpread, gainSpread).sample(),
+    attack: envelopeRatio(envSpread),
+    decay: envelopeRatio(envSpread),
+    sustain: lerp(Random.uniform().linlin(0, 1, 0.4, 1.25).sample(), 1, c),
+    release: envelopeRatio(envSpread),
+  };
+
+  if (isFormant) {
+    const formantFreqSpread = lerp(2.8, 1.04, c);
+    const formantQSpread = lerp(2.2, 1.02, c);
+    return {
+      ...delta,
+      formantFrequency: Random.uniform().linexp(0, 1, 1 / formantFreqSpread, formantFreqSpread).sample(),
+      formantQ: Random.uniform().linexp(0, 1, 1 / formantQSpread, formantQSpread).sample(),
+    };
+  }
+
+  return delta;
 }
 
 const startAudio = async () => {
@@ -83,14 +160,12 @@ if (import.meta.hot) {
 function update() {
   voices.value.forEach((voice) => {
     const isFormant = voice instanceof FormantVoice;
-    const voiceTempo = isFormant ? formantTempo.value : sineTempo.value;
-    const voiceShape = isFormant ? formantShape.value : sineShape.value;
+    const voiceCoherence = isFormant ? formantCoherence.value : sineCoherence.value;
+    const voiceDensity = isFormant
+      ? bpmFromDensity(formantDensity.value)
+      : bpmFromDensity(sineDensity.value);
 
-    voice.update({
-      time: Random.gamma_tempo(voiceTempo, voiceShape).sample(),
-      frequency: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
-      gain: Random.normal().clamp(-5, 5).linexp(-5, 5, 0.8, 1 / 0.8).sample(),
-    });
+    voice.update(buildVoiceDelta(voice, voiceCoherence, isFormant, voiceDensity));
   });
   spaces.value.forEach((space) => {
     space.update({ 
@@ -238,26 +313,30 @@ function disconnect(source, target) {
   />
   <div class="voice-controls">
     <div class="voice-controls-column">
-      <strong>Sine</strong>
-      <label for="tempo-sine">tempo {{ sineTempo }}</label>
-      <input id='tempo-sine' @input="event => sineTempo = Number(event.target.value)"
-        type="range" min="30" max="240" step="0.01" :value="sineTempo"
+      <strong>Sine Coherence</strong>
+      <label for="coherence-sine">{{ sineCoherence.toFixed(2) }}</label>
+      <input id='coherence-sine' @input="event => sineCoherence = Number(event.target.value)"
+        type="range" min="0" max="1" step="0.0001" :value="sineCoherence"
       />
-      <label for="scale-sine">scale {{ sineShape }}</label>
-      <input id='scale-sine' @input="event => sineShape = linexp(Number(event.target.value), 0, 1, 0.1, 1000)"
-        type="range" min="0" max="1" step="0.0001" value="0.5"
+
+      <strong>Sine Density</strong>
+      <label for="density-sine">{{ bpmFromDensity(sineDensity).toFixed(1) }}</label>
+      <input id='density-sine' @input="event => sineDensity = Number(event.target.value)"
+        type="range" min="0" max="1" step="0.0001" :value="sineDensity"
       />
     </div>
 
     <div class="voice-controls-column">
-      <strong>Formant</strong>
-      <label for="tempo-formant">tempo {{ formantTempo }}</label>
-      <input id='tempo-formant' @input="event => formantTempo = Number(event.target.value)"
-        type="range" min="30" max="240" step="0.01" :value="formantTempo"
+      <strong>Formant Coherence</strong>
+      <label for="coherence-formant">{{ formantCoherence.toFixed(2) }}</label>
+      <input id='coherence-formant' @input="event => formantCoherence = Number(event.target.value)"
+        type="range" min="0" max="1" step="0.0001" :value="formantCoherence"
       />
-      <label for="scale-formant">scale {{ formantShape }}</label>
-      <input id='scale-formant' @input="event => formantShape = linexp(Number(event.target.value), 0, 1, 0.1, 1000)"
-        type="range" min="0" max="1" step="0.0001" value="0.5"
+
+      <strong>Formant Density</strong>
+      <label for="density-formant">{{ bpmFromDensity(formantDensity).toFixed(1) }}</label>
+      <input id='density-formant' @input="event => formantDensity = Number(event.target.value)"
+        type="range" min="0" max="1" step="0.0001" :value="formantDensity"
       />
     </div>
   </div>

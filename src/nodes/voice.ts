@@ -52,11 +52,26 @@ export class SineVoice extends Voice {
     this.gain.gain.linearRampToValueAtTime(value, time);
   }
 
+  setEnvelopeVariance(attack = 1, decay = 1, sustain = 1, release = 1) {
+    this.adsr.attack = Math.max(0.005, this.base.attack * attack);
+    this.adsr.decay = Math.max(0, this.base.decay * decay);
+    this.adsr.sustain = Math.max(0, Math.min(1, this.base.sustain * sustain));
+    this.adsr.release = Math.max(0.01, this.base.release * release);
+  }
+
   triggerADSR(time: number) {
     this.adsr.trig(time);
   }
 
-  updaters(delta?: { time: number, frequency: number, gain: number }) {
+  updaters(delta?: {
+    time: number,
+    frequency: number,
+    gain: number,
+    attack: number,
+    decay: number,
+    sustain: number,
+    release: number,
+  }) {
     return {
       frequency: {
         object: this,
@@ -68,6 +83,16 @@ export class SineVoice extends Voice {
         update_fn: this.setGain,
         args: [this.base.gain * (delta?.gain ?? 1), this.ctx.currentTime + AR_TICK_SIZE],
       },
+      envelope: {
+        object: this,
+        update_fn: this.setEnvelopeVariance,
+        args: [
+          delta?.attack ?? 1,
+          delta?.decay ?? 1,
+          delta?.sustain ?? 1,
+          delta?.release ?? 1,
+        ],
+      },
       adsr: {
         object: this,
         update_fn: this.triggerADSR,
@@ -77,18 +102,18 @@ export class SineVoice extends Voice {
   }
   
   static randomize(): any {
-    const longMode = Math.random() < 0.4;
+    const longMode = Math.random() < 0.2;
 
     const attack = longMode
-      ? Random.uniform().linexp(0, 1, 0.25, 2.8).sample()
+      ? Random.uniform().linexp(0, 1, 0.06, 0.8).sample()
       : Random.uniform().linexp(0, 1, 0.01, 0.18).sample();
 
     const release = longMode
-      ? Random.uniform().linexp(0, 1, 0.4, 4.5).sample()
+      ? Random.uniform().linexp(0, 1, 0.12, 1.2).sample()
       : Random.uniform().linexp(0, 1, 0.03, 0.5).sample();
 
     const decay = longMode
-      ? Random.uniform().linexp(0, 1, 0.08, 1.2).sample()
+      ? Random.uniform().linexp(0, 1, 0.05, 0.45).sample()
       : Random.uniform().linexp(0, 1, 0.01, 0.25).sample();
 
     const sustain = longMode
@@ -97,7 +122,7 @@ export class SineVoice extends Voice {
 
     return {
       frequency: Random.uniform().linexp(0, 1, 90, 1300).sample(),
-      gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      gain:      Random.uniform().linexp(0, 1, 0.6, 1.0).sample(),
       attack,
       decay,
       sustain,
@@ -147,11 +172,53 @@ export class FormantVoice extends SineVoice {
     });
   }
 
+  setFormantFrequencyRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+    this.filters.forEach((filter, i) => {
+      const formant = this.base.formants?.[i];
+      const target = Math.max(30, (formant?.freq ?? filter.frequency.value) * ratio);
+      filter.frequency.linearRampToValueAtTime(target, time);
+    });
+  }
+
+  setFormantQRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+    this.filters.forEach((filter, i) => {
+      const formant = this.base.formants?.[i];
+      const target = Math.max(0.1, (formant?.Q ?? filter.Q.value) * ratio);
+      filter.Q.linearRampToValueAtTime(target, time);
+    });
+  }
+
+  updaters(delta?: {
+    time: number,
+    frequency: number,
+    gain: number,
+    attack: number,
+    decay: number,
+    sustain: number,
+    release: number,
+    formantFrequency: number,
+    formantQ: number,
+  }) {
+    return {
+      ...super.updaters(delta),
+      formantFrequency: {
+        object: this,
+        update_fn: this.setFormantFrequencyRatio,
+        args: [delta?.formantFrequency ?? 1, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      formantQ: {
+        object: this,
+        update_fn: this.setFormantQRatio,
+        args: [delta?.formantQ ?? 1, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+    };
+  }
+
   static randomize(): any {
     const type = rand_type();
     return {
       frequency: rand_freq(type),
-      gain:      Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
+      gain:      Random.uniform().linexp(0, 1, 0.6, 1.0).sample(),
       attack:    Random.uniform().linexp(0, 1, 0.02, 0.3).sample(),
       decay:     Random.uniform().linexp(0, 1, 0.01, 0.3).sample(),
       sustain:   Random.uniform().linexp(0, 1, 0.3, 1.0).sample(),
