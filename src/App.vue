@@ -9,7 +9,8 @@ const flow = ref(null);
 
 const sineCoherence = ref(0.5);
 const formantCoherence = ref(0.5);
-const PAD_EDGE_INSET = 0.08;
+const XY_DOT_RADIUS_PX = 10;
+const XY_ACTUAL_DOT_RADIUS_PX = 13;
 
 const sineDensity = ref(0.5);
 const formantDensity = ref(0.5);
@@ -55,23 +56,29 @@ if (import.meta.hot) {
   <div class="xy-controls">
     <XYPad
       title="Sine XY"
-      :coherence="sineCoherence"
-      :density="sineDensity"
-      :coherence-actual="sineCoherenceActual"
-      :density-actual="sineDensityActual"
-      :edge-inset="PAD_EDGE_INSET"
-      @update:coherence="updateSineCoherence"
-      @update:density="updateSineDensity"
+      x-label="coherence"
+      y-label="density"
+      :x="sineCoherence"
+      :y="sineDensity"
+      :actual-x="sineCoherenceActual"
+      :actual-y="sineDensityActual"
+      :dot-radius-px="XY_DOT_RADIUS_PX"
+      :actual-dot-radius-px="XY_ACTUAL_DOT_RADIUS_PX"
+      @update:x="updateSineCoherence"
+      @update:y="updateSineDensity"
     />
     <XYPad
       title="Formant XY"
-      :coherence="formantCoherence"
-      :density="formantDensity"
-      :coherence-actual="formantCoherenceActual"
-      :density-actual="formantDensityActual"
-      :edge-inset="PAD_EDGE_INSET"
-      @update:coherence="updateFormantCoherence"
-      @update:density="updateFormantDensity"
+      x-label="coherence"
+      y-label="density"
+      :x="formantCoherence"
+      :y="formantDensity"
+      :actual-x="formantCoherenceActual"
+      :actual-y="formantDensityActual"
+      :dot-radius-px="XY_DOT_RADIUS_PX"
+      :actual-dot-radius-px="XY_ACTUAL_DOT_RADIUS_PX"
+      @update:x="updateFormantCoherence"
+      @update:y="updateFormantDensity"
     />
   </div>
   <div id="flow" style="height: 75vh; width: 100vw;">
