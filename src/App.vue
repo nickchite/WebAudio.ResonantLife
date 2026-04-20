@@ -31,16 +31,50 @@ const PITCH_COHERENCE_STEEPNESS = 12;
 const HARMONIC_ROOT_FALLBACK_HZ = 55;
 const HARMONIC_ROOT_MIN_HZ = 55;
 const HARMONIC_ROOT_MAX_HZ = 110;
-const ROOT_CLOCK_MIN_BPM = 6;
-const ROOT_CLOCK_MAX_BPM = 72;
-const ROOT_CLOCK_DENSITY_EXPONENT = 0.8;
-const ROOT_CLOCK_MIN_INTERVAL_SEC = 0.35;
-const ROOT_CLOCK_MAX_INTERVAL_SEC = 12;
-const ROOT_CLOCK_SHAPE_LO = 2.5;
-const ROOT_CLOCK_SHAPE_HI = 12;
 const HARMONIC_INDEX_POOL = [1, 2, 3, 4, 5, 6, 8];
-const ROOT_HARMONICITY_STEEPNESS = 8;
 const CONTROL_INPUT_SPEED_PER_SEC = 0.12;
+
+const ROOT_MOTION_PROFILES = {
+  lowVariance: {
+    clockMinBpm: 3,
+    clockMaxBpm: 24,
+    densityExponent: 0.65,
+    clockMinIntervalSec: 0.45,
+    clockMaxIntervalSec: 16,
+    shapeLo: 6,
+    shapeHi: 18,
+    harmonicitySteepness: 10,
+    offSpreadSemisLow: 8,
+    offSpreadSemisHigh: 0.25,
+  },
+  balanced: {
+    clockMinBpm: 4,
+    clockMaxBpm: 36,
+    densityExponent: 0.72,
+    clockMinIntervalSec: 0.35,
+    clockMaxIntervalSec: 12,
+    shapeLo: 4,
+    shapeHi: 14,
+    harmonicitySteepness: 9,
+    offSpreadSemisLow: 12,
+    offSpreadSemisHigh: 0.5,
+  },
+  highVariance: {
+    clockMinBpm: 6,
+    clockMaxBpm: 60,
+    densityExponent: 0.85,
+    clockMinIntervalSec: 0.25,
+    clockMaxIntervalSec: 8,
+    shapeLo: 2.5,
+    shapeHi: 10,
+    harmonicitySteepness: 7,
+    offSpreadSemisLow: 14,
+    offSpreadSemisHigh: 2,
+  },
+};
+
+const ACTIVE_ROOT_MOTION_PROFILE = 'balanced';
+const ROOT_MOTION = ROOT_MOTION_PROFILES[ACTIVE_ROOT_MOTION_PROFILE];
 
 const activePad = ref(null);
 
@@ -242,23 +276,23 @@ function rootClockBpmFromGlobalDensity(globalDensity) {
   if (globalDensity <= 0) return 0;
   const sourceBpm = bpmFromDensity(globalDensity);
   const normalized = clamp01(sourceBpm / DENSITY_MAX_BPM);
-  const shaped = Math.pow(normalized, ROOT_CLOCK_DENSITY_EXPONENT);
-  return lerp(ROOT_CLOCK_MIN_BPM, ROOT_CLOCK_MAX_BPM, shaped);
+  const shaped = Math.pow(normalized, ROOT_MOTION.densityExponent);
+  return lerp(ROOT_MOTION.clockMinBpm, ROOT_MOTION.clockMaxBpm, shaped);
 }
 
 function sampleRootIntervalSec(clockBpm, globalCoherence) {
-  const shape = lerp(ROOT_CLOCK_SHAPE_LO, ROOT_CLOCK_SHAPE_HI, clamp01(globalCoherence));
+  const shape = lerp(ROOT_MOTION.shapeLo, ROOT_MOTION.shapeHi, clamp01(globalCoherence));
   const sampled = Random.gamma_tempo(clockBpm, shape).sample();
-  return Math.min(ROOT_CLOCK_MAX_INTERVAL_SEC, Math.max(ROOT_CLOCK_MIN_INTERVAL_SEC, sampled));
+  return Math.min(ROOT_MOTION.clockMaxIntervalSec, Math.max(ROOT_MOTION.clockMinIntervalSec, sampled));
 }
 
 function pickHarmonicRootJump(centerHz, globalCoherence) {
-  const c = sigmoid01(globalCoherence, ROOT_HARMONICITY_STEEPNESS);
+  const c = sigmoid01(globalCoherence, ROOT_MOTION.harmonicitySteepness);
 
   const harmonicIndex = HARMONIC_INDEX_POOL[Math.floor(Math.random() * HARMONIC_INDEX_POOL.length)];
   const harmonicCandidate = foldToRange(centerHz * harmonicIndex, HARMONIC_ROOT_MIN_HZ, HARMONIC_ROOT_MAX_HZ);
 
-  const offSpreadSemis = lerp(9, 1.5, c);
+  const offSpreadSemis = lerp(ROOT_MOTION.offSpreadSemisLow, ROOT_MOTION.offSpreadSemisHigh, c);
   const offSemis = Random.uniform().linlin(0, 1, -offSpreadSemis, offSpreadSemis).sample();
   const offRatio = Math.pow(2, offSemis / 12);
   const inharmonicCandidate = foldToRange(centerHz * offRatio, HARMONIC_ROOT_MIN_HZ, HARMONIC_ROOT_MAX_HZ);
@@ -279,7 +313,7 @@ function updateHarmonicRootScheduler() {
   const clockBpm = rootClockBpmFromGlobalDensity(gDensity);
 
   if (clockBpm <= 0) {
-    nextRootChangeTime = now + ROOT_CLOCK_MAX_INTERVAL_SEC;
+    nextRootChangeTime = now + ROOT_MOTION.clockMaxIntervalSec;
     return;
   }
 
