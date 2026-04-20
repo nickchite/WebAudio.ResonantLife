@@ -417,20 +417,6 @@ onBeforeUnmount(() => {
   opacity: 0.22;
 }
 
-.xy-pad::before {
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 1px dashed rgba(255, 255, 255, 0.35);
-}
-
-.xy-pad::after {
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  border-left: 1px dashed rgba(255, 255, 255, 0.35);
-}
-
 .xy-dot {
   position: absolute;
   border-radius: 999px;
