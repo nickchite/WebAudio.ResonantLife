@@ -12,7 +12,21 @@ export abstract class Voice extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
   input() { return undefined }
 
+  popOnDispose() {
+    // Inject a 0→1→0 DC impulse using ConstantSourceNode
+    try {
+      const ctx = this.ctx;
+      const src = ctx.createConstantSource();
+      src.offset.value = 1;
+      src.connect(this.gain);
+      src.start();
+      src.stop(ctx.currentTime + 0.04);
+      src.onended = () => { try { src.disconnect(); } catch {} };
+    } catch {}
+  }
+
   dispose() {
+    this.popOnDispose();
     super.dispose();
   }
 }
@@ -59,10 +73,10 @@ export class SineVoice extends Voice {
   }
 
   setEnvelopeVariance(attack = 1, decay = 1, sustain = 1, release = 1) {
-    this.adsr.attack = Math.max(0.005, this.base.attack * attack);
-    this.adsr.decay = Math.max(0, this.base.decay * decay);
-    this.adsr.sustain = Math.max(0, Math.min(1, this.base.sustain * sustain));
-    this.adsr.release = Math.max(0.01, this.base.release * release);
+    this.adsr.attack =  this.base.attack * attack;
+    this.adsr.decay =  this.base.decay * decay;
+    this.adsr.sustain = this.base.sustain * sustain;
+    this.adsr.release = this.base.release * release;
   }
 
   triggerADSR(time: number) {
@@ -139,19 +153,20 @@ export class SineVoice extends Voice {
   output() { return this.gain; }
 
   dispose() {
-    try {
-      this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-      this.gain.gain.setValueAtTime(this.gain.gain.value, this.ctx.currentTime);
-      this.gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.02);
-    } catch {
-      // no-op
-    }
-
-    try {
-      this.osc.stop(this.ctx.currentTime + 0.03);
-    } catch {
-      // no-op
-    }
+    this.popOnDispose();
+    // Wait for pop to finish before silencing
+    const popDur = 0.014; // 14ms (slightly longer than pop)
+    const tPopEnd = this.ctx.currentTime + popDur;
+    setTimeout(() => {
+      try {
+        this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.gain.gain.setValueAtTime(this.gain.gain.value, this.ctx.currentTime);
+        this.gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.02);
+      } catch {}
+      try {
+        this.osc.stop(this.ctx.currentTime + 0.03);
+      } catch {}
+    }, popDur * 1000);
 
     try {
       this.osc.disconnect();
@@ -326,6 +341,7 @@ export class FMVoice extends Voice {
   output() { return this.gain; }
 
   dispose() {
+    this.popOnDispose();
     try {
       this.fmsynth.disconnect();
       this.fmsynth.dispose();

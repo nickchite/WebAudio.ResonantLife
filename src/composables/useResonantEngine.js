@@ -321,9 +321,21 @@ export function useResonantEngine(options) {
     if (nextSpawnTime === 0) nextSpawnTime = now + LIFECYCLE_SPAWN_INTERVAL_MIN_SEC;
 
     if (now >= nextSpawnTime) {
-      // Low ensemble score → spawn sooner; high score → spawn later.
-      const score = meanEnsembleScore();
-      const interval = lerp(LIFECYCLE_SPAWN_INTERVAL_MIN_SEC, LIFECYCLE_SPAWN_INTERVAL_MAX_SEC, score);
+      // Use global density/coherence to derive BPM/shape for gamma-tempo interval.
+      const gDensity = globalDensityValue();
+      const gCoherence = globalCoherenceValue();
+      const clockBpm = rootClockBpmFromGlobalDensity(gDensity);
+      // Use a shape between 0.4 and 1.2 for more/less bursty timing, mapped from coherence.
+      const shape = lerp(0.4, 1.2, gCoherence);
+      // If BPM is too low, fall back to max interval.
+      let interval;
+      if (clockBpm > 0) {
+        interval = Random.gamma_tempo(clockBpm, shape).sample();
+      } else {
+        interval = LIFECYCLE_SPAWN_INTERVAL_MAX_SEC;
+      }
+      // Clamp interval to min/max.
+      interval = Math.max(LIFECYCLE_SPAWN_INTERVAL_MIN_SEC, Math.min(LIFECYCLE_SPAWN_INTERVAL_MAX_SEC, interval));
       nextSpawnTime = now + interval;
       await lifecycleSpawn();
     }
@@ -678,6 +690,10 @@ export function useResonantEngine(options) {
       data: { label: displayName, node, jitter },
     });
 
+    if (type === 'voice') {
+      attachVoiceMeter(id, node);
+    }
+
     if (voiceTargetSpaceId && chosenSide) {
       const oppositeSide = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }[chosenSide];
       const srcHandle = `source-${oppositeSide}`;
@@ -689,10 +705,6 @@ export function useResonantEngine(options) {
       flow.value.addEdges({ id: nextEdgeKey, source: id, target: voiceTargetSpaceId, sourceHandle: srcHandle, targetHandle: tgtHandle });
       const stats = voiceStatsById.get(id);
       if (stats) { stats.connectedSpaceId = voiceTargetSpaceId; stats.connectedSide = chosenSide; }
-    }
-
-    if (type === 'voice') {
-      attachVoiceMeter(id, node);
     }
 
     debugLog('added node', id, node, options.origin ?? 'manual');
@@ -743,11 +755,11 @@ export function useResonantEngine(options) {
     if (type === 'voice' && targetSpaceId && side) {
       const spacePos = spacePositions.get(targetSpaceId);
       if (spacePos) {
-        // Base angle for each cardinal side, then jitter ±40°.
+        // Base angle for each cardinal side, then jitter ±30° (safe margin before adjacent ±45° zone).
         const baseAngle = { top: -Math.PI / 2, right: 0, bottom: Math.PI / 2, left: Math.PI }[side];
-        const jitterRad = (Math.random() * 2 - 1) * (Math.PI * 40 / 180);
+        const jitterRad = (Math.random() * 2 - 1) * (Math.PI * 30 / 180);
         const angle = baseAngle + jitterRad;
-        const r = 75 + Math.random() * 37;
+        const r = 110 + Math.random() * 15;
         return {
           x: spacePos.x + Math.cos(angle) * r,
           y: spacePos.y + Math.sin(angle) * r,
