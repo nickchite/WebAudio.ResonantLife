@@ -54,6 +54,20 @@ body {
   margin: 0;
 }
 
+/* Vue Flow handle overrides — subtle rectangular sockets */
+.vue-flow__handle {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  transition: background 0.15s;
+}
+
+.vue-flow__handle:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
 h1,
 h2 {
   font-family: var(--heading);

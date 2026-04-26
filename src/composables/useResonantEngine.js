@@ -18,6 +18,20 @@ const CONTROL_RATE = 100;
 const CONTROL_TIME = 1000 / CONTROL_RATE;
 const DEBUG_AUDIO_GRAPH = import.meta.env.DEV && import.meta.env.VITE_DEBUG_AUDIO_GRAPH === '1';
 
+const LIFECYCLE_ENABLED = true;
+const LIFECYCLE_MUTATION_CHANCE = 0.55;
+const LIFECYCLE_LIFESPAN_MIN_SEC = 8;
+const LIFECYCLE_LIFESPAN_MAX_SEC = 50;
+// Population above this per-type count compresses lifespans toward the minimum.
+const LIFECYCLE_POP_PRESSURE_TARGET = 5;
+const LIFECYCLE_POP_PRESSURE_MAX = 12;
+const LIFECYCLE_SPAWN_INTERVAL_MIN_SEC = 3;
+const LIFECYCLE_SPAWN_INTERVAL_MAX_SEC = 14;
+
+const SCORE_EMA_ALPHA = 0.18;
+const ANALYSER_FFT_SIZE = 512;
+const BRIGHTNESS_SPLIT_HZ = 1800;
+
 export function useResonantEngine(options) {
   const {
     flow,
@@ -50,6 +64,11 @@ export function useResonantEngine(options) {
   const spaces = [];
   const suppressedEdgeAdds = new Set();
   const edgeKeys = new Set();
+  const voiceStatsById = new Map();
+  const voiceIdByNode = new WeakMap();
+  const spacePositions = new Map();
+  // Tracks which sides of each space are occupied: Map<spaceId, Set<'top'|'right'|'bottom'|'left'>>
+  const spaceOccupiedSides = new Map();
 
   let ctx;
   let output;
@@ -58,6 +77,8 @@ export function useResonantEngine(options) {
   let nextRootChangeTime = 0;
   let nextVoiceId = 0;
   let nextSpaceId = 0;
+  let nextSpawnTime = 0;
+  let nextSpawnType = Math.random() < 0.5 ? 'sine' : 'formant';
 
   function debugLog(...args) {
     if (DEBUG_AUDIO_GRAPH) console.log(...args);
@@ -109,6 +130,201 @@ export function useResonantEngine(options) {
     while (f < min) f *= 2;
     while (f > max) f /= 2;
     return f;
+  }
+
+  function voiceTypeName(voice) {
+    return voice instanceof FormantVoice ? 'formant' : 'sine';
+  }
+
+  function mutateBase(base, typeName) {
+    const next = {
+      ...base,
+      frequency: Math.max(40, (base.frequency ?? 220) * Random.uniform().linexp(0, 1, 0.93, 1.08).sample()),
+      gain: clamp01((base.gain ?? 0.7) * Random.uniform().linexp(0, 1, 0.9, 1.12).sample()),
+      attack: Math.max(0.005, (base.attack ?? 0.03) * Random.uniform().linexp(0, 1, 0.85, 1.2).sample()),
+      decay: Math.max(0.0, (base.decay ?? 0.08) * Random.uniform().linexp(0, 1, 0.85, 1.2).sample()),
+      sustain: Math.min(1.2, Math.max(0.1, (base.sustain ?? 0.8) * Random.uniform().linexp(0, 1, 0.88, 1.14).sample())),
+      release: Math.max(0.01, (base.release ?? 0.12) * Random.uniform().linexp(0, 1, 0.85, 1.25).sample()),
+    };
+
+    if (typeName === 'formant' && Array.isArray(base.formants)) {
+      next.formants = base.formants.map((f, i) => ({
+        freq: Math.max(60, f.freq * Random.uniform().linexp(0, 1, 0.92, 1.1 + (i * 0.02)).sample()),
+        Q: Math.max(0.15, f.Q * Random.uniform().linexp(0, 1, 0.88, 1.15).sample()),
+      }));
+    }
+
+    return next;
+  }
+
+  function attachVoiceMeter(id, node) {
+    if (!ctx) return;
+    const outputNode = node?.output?.();
+    if (!outputNode?.connect) return;
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = ANALYSER_FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.78;
+
+    try {
+      outputNode.connect(analyser);
+    } catch {
+      return;
+    }
+
+    const type = voiceTypeName(node);
+    const typeCount = [...voiceStatsById.values()].filter(
+      (s) => voiceTypeName(s.node) === type,
+    ).length;
+    // Pressure 0 = at or below target, 1 = at or above max → compress lifespan.
+    const pressure = clamp01(
+      (typeCount - LIFECYCLE_POP_PRESSURE_TARGET)
+      / Math.max(1, LIFECYCLE_POP_PRESSURE_MAX - LIFECYCLE_POP_PRESSURE_TARGET),
+    );
+    const maxForBirth = lerp(LIFECYCLE_LIFESPAN_MAX_SEC, LIFECYCLE_LIFESPAN_MIN_SEC, pressure);
+    const lifespan = lerp(LIFECYCLE_LIFESPAN_MIN_SEC, Math.max(LIFECYCLE_LIFESPAN_MIN_SEC, maxForBirth), Math.random());
+    voiceStatsById.set(id, {
+      id,
+      node,
+      outputNode,
+      analyser,
+      freqData: new Float32Array(analyser.frequencyBinCount),
+      score: 0,
+      createdAt: ctx.currentTime,
+      lastUpdatedAt: ctx.currentTime,
+      lifespan,
+      connectedSpaceId: null,
+      connectedSide: null,
+    });
+    voiceIdByNode.set(node, id);
+  }
+
+  function detachVoiceMeterById(id) {
+    const stats = voiceStatsById.get(id);
+    if (!stats) return;
+    try {
+      stats.outputNode?.disconnect?.(stats.analyser);
+    } catch {
+      // no-op
+    }
+    try {
+      stats.analyser?.disconnect?.();
+    } catch {
+      // no-op
+    }
+    voiceStatsById.delete(id);
+  }
+
+  function updateVoiceScores() {
+    if (!ctx) return;
+
+    voiceStatsById.forEach((stats) => {
+      stats.analyser.getFloatFrequencyData(stats.freqData);
+
+      let totalAmp = 0;
+      let weightedBin = 0;
+      let brightAmp = 0;
+      let dbSum = 0;
+
+      const nyquist = ctx.sampleRate / 2;
+      const binHz = nyquist / Math.max(1, stats.freqData.length);
+      const brightBin = Math.floor(BRIGHTNESS_SPLIT_HZ / Math.max(1e-6, binHz));
+
+      for (let i = 0; i < stats.freqData.length; i += 1) {
+        const db = Number.isFinite(stats.freqData[i]) ? stats.freqData[i] : -120;
+        const amp = Math.pow(10, db / 20);
+        totalAmp += amp;
+        dbSum += db;
+        weightedBin += amp * i;
+        if (i >= brightBin) brightAmp += amp;
+      }
+
+      const meanDb = stats.freqData.length > 0 ? dbSum / stats.freqData.length : -120;
+      const energyNorm = clamp01((meanDb + 100) / 70);
+      const centroidNorm = totalAmp > 0
+        ? clamp01((weightedBin / totalAmp) / Math.max(1, stats.freqData.length - 1))
+        : 0;
+      const brightnessNorm = totalAmp > 0 ? clamp01(brightAmp / totalAmp) : 0;
+
+      const instant = (0.6 * energyNorm) + (0.25 * centroidNorm) + (0.15 * brightnessNorm);
+      stats.score = lerp(stats.score, instant, SCORE_EMA_ALPHA);
+      stats.lastUpdatedAt = ctx.currentTime;
+    });
+  }
+
+  function pickParentOfType(type) {
+    const entries = [...voiceStatsById.values()].filter(
+      (s) => voiceTypeName(s.node) === type,
+    );
+    if (entries.length === 0) return null;
+    const total = entries.reduce((sum, s) => sum + Math.max(0.01, s.score), 0);
+    let pick = Math.random() * total;
+    for (const s of entries) {
+      pick -= Math.max(0.01, s.score);
+      if (pick <= 0) return s;
+    }
+    return entries[entries.length - 1];
+  }
+
+  async function lifecycleSpawn() {
+    if (!ctx || !flow.value?.graph) return;
+
+    // Alternate between sine and formant to keep both populations alive.
+    const type = nextSpawnType;
+    nextSpawnType = type === 'sine' ? 'formant' : 'sine';
+
+    const parent = pickParentOfType(type);
+    const mutate = parent && Math.random() < LIFECYCLE_MUTATION_CHANCE;
+
+    if (mutate) {
+      const base = mutateBase(parent.node.base ?? {}, type);
+      await addNode('voice', { voiceType: type, base, origin: 'lifecycle-offspring' });
+    } else {
+      await addNode('voice', {
+        weighted: true,
+        weights: type === 'sine' ? { sine: 1, formant: 0 } : { sine: 0, formant: 1 },
+        origin: 'lifecycle-random',
+      });
+    }
+  }
+
+  async function lifecycleAge() {
+    if (!ctx) return;
+
+    const expired = [];
+    voiceStatsById.forEach((stats) => {
+      const age = ctx.currentTime - stats.createdAt;
+      if (age >= stats.lifespan) expired.push(stats);
+    });
+
+    for (const stats of expired) {
+      debugLog('lifecycle age-out', { id: stats.id, age: Number((ctx.currentTime - stats.createdAt).toFixed(1)), lifespan: Number(stats.lifespan.toFixed(1)) });
+      await removeNodeById(stats.id);
+    }
+  }
+
+  function meanEnsembleScore() {
+    const entries = [...voiceStatsById.values()];
+    if (entries.length === 0) return 0;
+    return entries.reduce((sum, s) => sum + s.score, 0) / entries.length;
+  }
+
+  async function runLifecycle() {
+    if (!LIFECYCLE_ENABLED || !ctx) return;
+
+    updateVoiceScores();
+    await lifecycleAge();
+
+    const now = ctx.currentTime;
+    if (nextSpawnTime === 0) nextSpawnTime = now + LIFECYCLE_SPAWN_INTERVAL_MIN_SEC;
+
+    if (now >= nextSpawnTime) {
+      // Low ensemble score → spawn sooner; high score → spawn later.
+      const score = meanEnsembleScore();
+      const interval = lerp(LIFECYCLE_SPAWN_INTERVAL_MIN_SEC, LIFECYCLE_SPAWN_INTERVAL_MAX_SEC, score);
+      nextSpawnTime = now + interval;
+      await lifecycleSpawn();
+    }
   }
 
   function estimatePitchCenterHz() {
@@ -373,6 +589,8 @@ export function useResonantEngine(options) {
         time: Random.exponential(1 / 10).sample(),
       });
     });
+
+    void runLifecycle();
   }
 
   async function addNode(type, options = {}) {
@@ -387,14 +605,16 @@ export function useResonantEngine(options) {
 
     let node;
     if (type === 'voice') {
-      node = options.weighted
-        ? VoiceFactory.createWeighted(ctx, options.weights ?? {})
-        : VoiceFactory.createRandom(ctx);
+      node = options.voiceType
+        ? VoiceFactory.createNamed(ctx, options.voiceType, options.base)
+        : (options.weighted
+          ? VoiceFactory.createWeighted(ctx, options.weights ?? {}, options.base)
+          : VoiceFactory.createRandom(ctx, options.base));
       voices.push(node);
     } else if (type === 'space') {
       node = SpaceFactory.create(ctx).randomize();
       node.connect(output);
-      const pan = pickPan(spaces.map((s) => s.base.pannerPos));
+      const pan = options.pan !== undefined ? options.pan : pickPan(spaces.map((s) => s.base.pannerPos));
       node.base.pannerPos = pan;
       node.panner.pan.value = pan;
       spaces.push(node);
@@ -402,30 +622,72 @@ export function useResonantEngine(options) {
 
     flow.value.graph.set(id, node);
 
-    const position = getSpawnPosition(type);
+    // Pick target space + side before computing position.
+    const sides = ['top', 'right', 'bottom', 'left'];
+    let voiceTargetSpaceId = null;
+    let chosenSide = null;
+
+    if (type === 'voice' && spaces.length > 0) {
+      // Find a space with a free side, prefer the least-occupied one.
+      const candidates = getIdsByPrefix('space')
+        .map((sid) => ({ sid, occ: spaceOccupiedSides.get(sid) ?? new Set() }))
+        .filter(({ occ }) => occ.size < 4)
+        .sort((a, b) => a.occ.size - b.occ.size);
+
+      if (candidates.length > 0) {
+        // Pick randomly from the least-occupied tier.
+        const minOcc = candidates[0].occ.size;
+        const tier = candidates.filter((c) => c.occ.size === minOcc);
+        const { sid, occ } = tier[Math.floor(Math.random() * tier.length)];
+        const free = sides.filter((s) => !occ.has(s));
+        chosenSide = free[Math.floor(Math.random() * free.length)];
+        occ.add(chosenSide);
+        spaceOccupiedSides.set(sid, occ);
+        voiceTargetSpaceId = sid;
+      } else {
+        debugLog('lifecycle spawn skipped: all space sides occupied');
+      }
+    }
+
+    const position = options.position ?? getSpawnPosition(type, node, voiceTargetSpaceId, chosenSide);
+
+    if (type === 'space') {
+      spacePositions.set(id, position);
+      spaceOccupiedSides.set(id, new Set());
+    }
+
+    const displayName = type === 'space' ? 'Space'
+      : (node instanceof FormantVoice ? 'Formant' : 'Sine');
+
+    const jitterRange = 10;
+    const jitter = Object.fromEntries(
+      ['source', 'target'].flatMap((t) =>
+        sides.map((s) => [`${t}${s.charAt(0).toUpperCase() + s.slice(1)}`, (Math.random() * 2 - 1) * jitterRange]),
+      ),
+    );
+
     flow.value.addNodes({
       id,
       type,
       position,
-      data: {
-        label: id,
-        node,
-      },
+      data: { label: displayName, node, jitter },
     });
 
-    if (type === 'voice' && spaces.length > 0) {
-      const spaceIds = getIdsByPrefix('space');
-      const targetId = spaceIds[Math.floor(Math.random() * spaceIds.length)];
-      const nextEdgeKey = `${id}->${targetId}`;
-
-      await connect(id, targetId);
+    if (voiceTargetSpaceId && chosenSide) {
+      const oppositeSide = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }[chosenSide];
+      const srcHandle = `source-${oppositeSide}`;
+      const tgtHandle = `target-${chosenSide}`;
+      const nextEdgeKey = `${id}->${voiceTargetSpaceId}`;
+      await connect(id, voiceTargetSpaceId);
       suppressedEdgeAdds.add(nextEdgeKey);
-      rememberEdge(id, targetId);
-      flow.value.addEdges({
-        id: nextEdgeKey,
-        source: id,
-        target: targetId,
-      });
+      rememberEdge(id, voiceTargetSpaceId);
+      flow.value.addEdges({ id: nextEdgeKey, source: id, target: voiceTargetSpaceId, sourceHandle: srcHandle, targetHandle: tgtHandle });
+      const stats = voiceStatsById.get(id);
+      if (stats) { stats.connectedSpaceId = voiceTargetSpaceId; stats.connectedSide = chosenSide; }
+    }
+
+    if (type === 'voice') {
+      attachVoiceMeter(id, node);
     }
 
     debugLog('added node', id, node, options.origin ?? 'manual');
@@ -457,16 +719,38 @@ export function useResonantEngine(options) {
     });
   }
 
-  function getSpawnPosition(type) {
-    const width = window.innerWidth;
-    const isVoice = type === 'voice';
-    const minX = isVoice ? 60 : width * 0.6;
-    const maxX = isVoice ? width * 0.35 : width - 180;
+  function getSpawnPosition(type, node, targetSpaceId = null, side = null) {
+    const W = window.innerWidth;
+    const H = window.innerHeight * 0.68;
 
-    return {
-      x: minX + Math.random() * Math.max(40, maxX - minX),
-      y: 50 + Math.random() * 500,
-    };
+    if (type === 'space') {
+      const pan = node?.base?.pannerPos ?? 0;
+      const cx = W / 2 - 40;
+      const cy = H * 0.72;
+      const R = Math.min(W * 0.38, H * 0.6);
+      const angle = Math.PI * (1 - (pan + 1) / 2);
+      return {
+        x: cx + R * Math.cos(angle),
+        y: cy - R * Math.sin(angle) * 0.55,
+      };
+    }
+
+    if (type === 'voice' && targetSpaceId && side) {
+      const spacePos = spacePositions.get(targetSpaceId);
+      if (spacePos) {
+        // Base angle for each cardinal side, then jitter ±40°.
+        const baseAngle = { top: -Math.PI / 2, right: 0, bottom: Math.PI / 2, left: Math.PI }[side];
+        const jitterRad = (Math.random() * 2 - 1) * (Math.PI * 40 / 180);
+        const angle = baseAngle + jitterRad;
+        const r = 100 + Math.random() * 50;
+        return {
+          x: spacePos.x + Math.cos(angle) * r,
+          y: spacePos.y + Math.sin(angle) * r,
+        };
+      }
+    }
+
+    return { x: 80 + Math.random() * 300, y: 80 + Math.random() * 300 };
   }
 
   async function connect(source, target) {
@@ -496,7 +780,7 @@ export function useResonantEngine(options) {
       src.connect(tgt);
       rememberEdge(source, target);
     } catch (err) {
-      console.error(err);
+      debugLog('connect failed (expected if already connected or disposed)', source, '->', target, err?.message);
     }
   }
 
@@ -512,7 +796,7 @@ export function useResonantEngine(options) {
       src.disconnect(tgt);
       forgetEdge(source, target);
     } catch (err) {
-      console.error(err);
+      debugLog('disconnect failed (expected if already disconnected or disposed)', source, '->', target, err?.message);
     }
   }
 
@@ -542,9 +826,18 @@ export function useResonantEngine(options) {
 
     flow.value.graph.delete(id);
     if (type === 'voice') {
+      // Read stats BEFORE detachVoiceMeterById deletes them from voiceStatsById.
+      const stats = voiceStatsById.get(id);
+      if (stats?.connectedSpaceId && stats?.connectedSide) {
+        const occupied = spaceOccupiedSides.get(stats.connectedSpaceId);
+        if (occupied) occupied.delete(stats.connectedSide);
+      }
+      detachVoiceMeterById(id);
       const idx = voices.indexOf(node);
       if (idx >= 0) voices.splice(idx, 1);
     } else {
+      spacePositions.delete(id);
+      spaceOccupiedSides.delete(id);
       const idx = spaces.indexOf(node);
       if (idx >= 0) spaces.splice(idx, 1);
       if (spaces.length > 0) redistributePan(0.7);
@@ -554,7 +847,7 @@ export function useResonantEngine(options) {
       try {
         node.dispose();
       } catch (err) {
-        console.error('dispose failed', id, err);
+        debugLog('dispose failed (expected on hot reload or double-dispose)', id, err?.message);
       }
     }
 
@@ -563,6 +856,7 @@ export function useResonantEngine(options) {
 
   function disposeAudio() {
     clearInterval(updateInterval);
+    voiceStatsById.forEach((_, id) => detachVoiceMeterById(id));
     debugLog('VITE Reload: interval cleared, audio context preserved');
   }
 

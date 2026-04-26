@@ -54,7 +54,14 @@ panOnScroll.value = false
 // panOnScrollMode.value = 'free'
 panOnDrag.value = false
 
-onConnect(addEdges);
+onConnect((params) => {
+  // Only allow voice → space connections.
+  const sourceIsVoice = params.source?.startsWith('voice-');
+  const targetIsSpace = params.target?.startsWith('space-');
+  if (sourceIsVoice && targetIsSpace) {
+    addEdges(params);
+  }
+});
 
 function onEdgeChange(changes: EdgeChange[]) {
   changes.forEach(change => {

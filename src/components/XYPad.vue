@@ -353,7 +353,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="xy-column">
-    <strong>{{ title }}</strong>
     <div
       class="xy-pad"
       :style="{ borderRadius: padCornerRadiusPx() + 'px' }"
@@ -380,6 +379,7 @@ onBeforeUnmount(() => {
           height: (actualDotRadiusPx() * 2) + 'px'
         }"
       ></div>
+      <div class="xy-title">{{ title }}</div>
       <div class="xy-axis xy-axis-x">{{ xLabel }}</div>
       <div class="xy-axis xy-axis-y">{{ yLabel }}</div>
     </div>
@@ -399,14 +399,30 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background:
-    radial-gradient(circle at 20% 20%, rgba(255, 160, 110, 0.26), transparent 42%),
-    radial-gradient(circle at 80% 80%, rgba(110, 210, 255, 0.22), transparent 45%),
-    linear-gradient(145deg, #1b1f26, #101318);
+    radial-gradient(circle at 18% 18%, rgba(167, 139, 250, 0.2), transparent 44%),
+    radial-gradient(circle at 82% 18%, rgba(249, 115, 22, 0.2), transparent 46%),
+    radial-gradient(circle at 82% 82%, rgba(0, 212, 255, 0.2), transparent 45%),
+    radial-gradient(circle at 18% 82%, rgba(239, 68, 68, 0.16), transparent 44%),
+    linear-gradient(145deg, #161b25, #0d1118);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 12px 26px rgba(0, 0, 0, 0.3);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 12px 26px rgba(0, 0, 0, 0.32);
   cursor: crosshair;
   touch-action: none;
+}
+
+.xy-title {
+  position: absolute;
+  top: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(240, 246, 255, 0.88);
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .xy-pad::before,
@@ -442,7 +458,7 @@ onBeforeUnmount(() => {
   color: rgba(255, 255, 255, 0.72);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   pointer-events: none;
 }
 
