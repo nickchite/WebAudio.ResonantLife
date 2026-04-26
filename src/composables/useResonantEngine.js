@@ -253,12 +253,21 @@ export function useResonantEngine(options) {
     };
 
     if (isFormant) {
-      const formantFreqSpread = lerp(2.8, 1.04, cPitch);
-      const formantQSpread = lerp(2.2, 1.02, cPitch);
+      const formantFreqSpread = lerp(4.2, 1.18, cPitch);
+      const formantQSpread = lerp(3.4, 1.12, cPitch);
+      const formantCount = Array.isArray(voice.base?.formants)
+        ? voice.base.formants.length
+        : 3;
       return {
         ...delta,
-        formantFrequency: Random.uniform().linexp(0, 1, 1 / formantFreqSpread, formantFreqSpread).sample(),
-        formantQ: Random.uniform().linexp(0, 1, 1 / formantQSpread, formantQSpread).sample(),
+        formantFrequency: Array.from({ length: formantCount }, (_, i) => (
+          Random.uniform().linexp(0, 1, 1 / formantFreqSpread, formantFreqSpread).sample()
+          * Random.uniform().linexp(0, 1, 0.9, 1.12 + (i * 0.06)).sample()
+        )),
+        formantQ: Array.from({ length: formantCount }, (_, i) => (
+          Random.uniform().linexp(0, 1, 1 / formantQSpread, formantQSpread).sample()
+          * Random.uniform().linexp(0, 1, 0.92, 1.1 + (i * 0.04)).sample()
+        )),
       };
     }
 

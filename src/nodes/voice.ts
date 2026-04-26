@@ -212,18 +212,22 @@ export class FormantVoice extends SineVoice {
     });
   }
 
-  setFormantFrequencyRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+  setFormantFrequencyRatio(ratio: number | number[] = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+    const ratios = Array.isArray(ratio) ? ratio : [ratio];
     this.filters.forEach((filter, i) => {
       const formant = this.base.formants?.[i];
-      const target = Math.max(30, (formant?.freq ?? filter.frequency.value) * ratio);
+      const ratioAtIndex = ratios[i] ?? ratios[ratios.length - 1] ?? 1;
+      const target = Math.max(30, (formant?.freq ?? filter.frequency.value) * ratioAtIndex);
       filter.frequency.linearRampToValueAtTime(target, time);
     });
   }
 
-  setFormantQRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+  setFormantQRatio(ratio: number | number[] = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+    const ratios = Array.isArray(ratio) ? ratio : [ratio];
     this.filters.forEach((filter, i) => {
       const formant = this.base.formants?.[i];
-      const target = Math.max(0.1, (formant?.Q ?? filter.Q.value) * ratio);
+      const ratioAtIndex = ratios[i] ?? ratios[ratios.length - 1] ?? 1;
+      const target = Math.max(0.1, (formant?.Q ?? filter.Q.value) * ratioAtIndex);
       filter.Q.linearRampToValueAtTime(target, time);
     });
   }
@@ -236,8 +240,8 @@ export class FormantVoice extends SineVoice {
     decay: number,
     sustain: number,
     release: number,
-    formantFrequency: number,
-    formantQ: number,
+    formantFrequency: number | number[],
+    formantQ: number | number[],
   }) {
     return {
       ...super.updaters(delta),
