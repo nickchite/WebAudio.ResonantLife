@@ -2,15 +2,17 @@ import { Random } from "../lib";
 
 type Formant = { freq: number, Q: number };
 
-type SawType = 'male' | 'female';
+type SawType = 'male' | 'female' | 'buzzy';
 
 const formant_freq_ranges = {
     'male': [80, 200],
     'female': [220, 400], 
+    'buzzy': [400, 800], 
 }
 
 export function rand_type(): SawType {
-    return ['male', 'female'][Math.floor(Math.random() * 2)] as SawType;
+    const keys = Object.keys(formant_freq_ranges) as SawType[];
+    return keys[Math.floor(Math.random() * keys.length)];
 }
 
 export function rand_freq(type: SawType): number {
@@ -23,6 +25,12 @@ function generate_formant_ratios() {
     const F2 = F1 * Random.uniform().linexp(0, 1, 1.6, 2.1).sample();
     const F3 = F2 * Random.uniform().linexp(0, 1, 1.4, 1.8).sample();
     return [F1, F2, F3];
+}
+
+export function random_formant_modulation_ratios(count: number, spread: number): number[] {
+    return Array.from({ length: count }, () => (
+        Random.uniform().linexp(0, 1, 1 / spread, spread).sample()
+    ));
 }
 
 export function random_formants(type: SawType): Formant[] {

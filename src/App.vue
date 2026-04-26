@@ -16,13 +16,19 @@ const {
   disconnect,
   startAudio,
   disposeAudio,
+  addNode,
   sine,
   formant,
 } = useResonantEngine({
   flow,
 });
 
-onMounted(async () => { startAudio(); });
+onMounted(async () => {
+  startAudio();
+  const voice = addNode('voice', { type: 'formant', coherence: 0.5, density: 0.5 });
+  const space = addNode('space', { coherence: 0.5, density: 0.5 });
+  connect(voice, space);
+});
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

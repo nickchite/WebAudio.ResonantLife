@@ -6,6 +6,8 @@ import { rand_type, rand_freq, random_formants } from './formant';
 
 import * as Tone from 'tone';
 
+type UpdaterMap = Record<string, { object: Object, update_fn: Function, args: any[] }>;
+
 export abstract class Voice extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
   input() { return undefined }
@@ -75,7 +77,7 @@ export class SineVoice extends Voice {
     decay: number,
     sustain: number,
     release: number,
-  }) {
+  }): UpdaterMap {
     return {
       frequency: {
         object: this,
@@ -212,18 +214,23 @@ export class FormantVoice extends SineVoice {
     });
   }
 
-  setFormantFrequencyRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+  private ratioAt(ratio: number | number[] = 1, index: number) {
+    if (Array.isArray(ratio)) return ratio[index] ?? 1;
+    return ratio;
+  }
+
+  setFormantFrequencyRatio(ratio: number | number[] = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
     this.filters.forEach((filter, i) => {
       const formant = this.base.formants?.[i];
-      const target = Math.max(30, (formant?.freq ?? filter.frequency.value) * ratio);
+      const target = Math.max(30, (formant?.freq ?? filter.frequency.value) * this.ratioAt(ratio, i));
       filter.frequency.linearRampToValueAtTime(target, time);
     });
   }
 
-  setFormantQRatio(ratio = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
+  setFormantQRatio(ratio: number | number[] = 1, time = this.ctx.currentTime + AR_TICK_SIZE) {
     this.filters.forEach((filter, i) => {
       const formant = this.base.formants?.[i];
-      const target = Math.max(0.1, (formant?.Q ?? filter.Q.value) * ratio);
+      const target = Math.max(0.1, (formant?.Q ?? filter.Q.value) * this.ratioAt(ratio, i));
       filter.Q.linearRampToValueAtTime(target, time);
     });
   }
@@ -236,9 +243,9 @@ export class FormantVoice extends SineVoice {
     decay: number,
     sustain: number,
     release: number,
-    formantFrequency: number,
-    formantQ: number,
-  }) {
+    formantFrequency: number | number[],
+    formantQ: number | number[],
+  }): UpdaterMap {
     return {
       ...super.updaters(delta),
       formantFrequency: {
