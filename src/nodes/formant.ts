@@ -27,10 +27,27 @@ function generate_formant_ratios() {
     return [F1, F2, F3];
 }
 
-export function random_formant_modulation_ratios(count: number, spread: number): number[] {
-    return Array.from({ length: count }, () => (
-        Random.uniform().linexp(0, 1, 1 / spread, spread).sample()
-    ));
+export function random_formant_modulation_ratios(
+    count: number,
+    spread: number,
+    options: {
+        colorMin?: number,
+        colorMax?: number,
+        colorStep?: number,
+    } = {}
+): number[] {
+    const {
+        colorMin = 1,
+        colorMax = 1,
+        colorStep = 0,
+    } = options;
+
+    return Array.from({ length: count }, (_, i) => {
+        const base = Random.uniform().linexp(0, 1, 1 / spread, spread).sample();
+        const colorHi = colorMax + (i * colorStep);
+        const color = Random.uniform().linexp(0, 1, colorMin, colorHi).sample();
+        return base * color;
+    });
 }
 
 export function random_formants(type: SawType): Formant[] {

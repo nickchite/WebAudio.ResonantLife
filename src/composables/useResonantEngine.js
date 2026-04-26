@@ -315,12 +315,20 @@ export function useResonantEngine(options) {
 
     if (isFormant) {
       const formantCount = voice.base?.formants?.length ?? voice.filters?.length ?? 0;
-      const formantFreqSpread = 1.6;
-      const formantQSpread = 6.0;
+      const formantFreqSpread = lerp(4.2, 1.18, cPitch);
+      const formantQSpread = lerp(3.4, 1.12, cPitch);
       return {
         ...delta,
-        formantFrequency: random_formant_modulation_ratios(formantCount, formantFreqSpread),
-        formantQ: random_formant_modulation_ratios(formantCount, formantQSpread),
+        formantFrequency: random_formant_modulation_ratios(formantCount, formantFreqSpread, {
+          colorMin: 0.9,
+          colorMax: 1.12,
+          colorStep: 0.06,
+        }),
+        formantQ: random_formant_modulation_ratios(formantCount, formantQSpread, {
+          colorMin: 0.92,
+          colorMax: 1.1,
+          colorStep: 0.04,
+        }),
       };
     }
 
