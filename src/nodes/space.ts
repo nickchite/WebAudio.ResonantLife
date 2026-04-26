@@ -1,6 +1,5 @@
 import { AR_TICK_SIZE, Node } from './node';
 import { Comb, AllPass } from './misc.ts';
-import { Random } from '../lib.ts';
 
 import * as Tone from 'tone';
 
@@ -16,7 +15,7 @@ export class FullSpace extends Space {
   reverb: Tone.Reverb;
   eq: Tone.EQ3;
   filter: Tone.Filter;
-  panner: Tone.Panner;
+  panner: Tone.Panner3D;
   dryGain: Tone.Gain;
   wetGain: Tone.Gain;
   outputGain: Tone.Gain;
@@ -28,9 +27,10 @@ export class FullSpace extends Space {
       reverbTime: 2.5,
       eq: [0, 0, 0],
       filterFreq: 2500,
-      pannerPos: 0,
-      dry: 1,
-      wet: 0.35,
+      pannerX: 0,
+      pannerZ: -1,  // -1 = directly in front, +1 = directly behind
+      dry: 0.55,
+      wet: 0.85,
       output: 1.2,
       ...this.base,
     };
@@ -38,7 +38,13 @@ export class FullSpace extends Space {
     this.reverb = new Tone.Reverb(3);
     this.eq = new Tone.EQ3(this.base.eq[0], this.base.eq[1], this.base.eq[2]);
     this.filter = new Tone.Filter(this.base.filterFreq, "lowpass").connect(this.eq);
-    this.panner = new Tone.Panner(this.base.pannerPos).connect(this.filter);
+    this.panner = new Tone.Panner3D({
+      panningModel: 'HRTF',
+      positionX: this.base.pannerX,
+      positionY: 0,
+      positionZ: this.base.pannerZ,
+      rolloffFactor: 0,
+    }).connect(this.filter);
 
     this.dryGain = new Tone.Gain(this.base.dry);
     this.wetGain = new Tone.Gain(this.base.wet);
@@ -53,67 +59,38 @@ export class FullSpace extends Space {
   }
   
   randomize() {
-    const archetypes = [
-      () => ({
-        // Tight / near-dry room
-        reverbTime: Random.uniform().linlin(0, 1, 0.25, 1.1).sample(),
-        eq: [
-          Random.uniform().linlin(0, 1, -4, 4).sample(),
-          Random.uniform().linlin(0, 1, -3, 3).sample(),
-          Random.uniform().linlin(0, 1, -4, 4).sample(),
-        ],
-        filterFreq: Random.uniform().linlin(0, 1, 3200, 12000).sample(),
-        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
-        dry: Random.uniform().linlin(0, 1, 1.0, 1.4).sample(),
-        wet: Random.uniform().linlin(0, 1, 0.05, 0.25).sample(),
-        output: Random.uniform().linlin(0, 1, 0.9, 1.3).sample(),
-      }),
-      () => ({
-        // Large cavern / wash
-        reverbTime: Random.uniform().linlin(0, 1, 4.5, 14).sample(),
-        eq: [
-          Random.uniform().linlin(0, 1, -10, -1).sample(),
-          Random.uniform().linlin(0, 1, -2, 6).sample(),
-          Random.uniform().linlin(0, 1, -3, 7).sample(),
-        ],
-        filterFreq: Random.uniform().linlin(0, 1, 800, 2800).sample(),
-        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
-        dry: Random.uniform().linlin(0, 1, 0.2, 0.65).sample(),
-        wet: Random.uniform().linlin(0, 1, 0.75, 1.5).sample(),
-        output: Random.uniform().linlin(0, 1, 0.9, 1.4).sample(),
-      }),
-      () => ({
-        // Shimmer / airy highs
-        reverbTime: Random.uniform().linlin(0, 1, 2.5, 9).sample(),
-        eq: [
-          Random.uniform().linlin(0, 1, -12, -3).sample(),
-          Random.uniform().linlin(0, 1, -4, 2).sample(),
-          Random.uniform().linlin(0, 1, 6, 14).sample(),
-        ],
-        filterFreq: Random.uniform().linlin(0, 1, 3500, 15000).sample(),
-        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
-        dry: Random.uniform().linlin(0, 1, 0.35, 0.9).sample(),
-        wet: Random.uniform().linlin(0, 1, 0.45, 1.25).sample(),
-        output: Random.uniform().linlin(0, 1, 0.95, 1.45).sample(),
-      }),
-      () => ({
-        // Band-limited / muffled radio
-        reverbTime: Random.uniform().linlin(0, 1, 0.8, 3.5).sample(),
-        eq: [
-          Random.uniform().linlin(0, 1, -12, -4).sample(),
-          Random.uniform().linlin(0, 1, 2, 10).sample(),
-          Random.uniform().linlin(0, 1, -12, -2).sample(),
-        ],
-        filterFreq: Random.uniform().linlin(0, 1, 500, 1800).sample(),
-        pannerPos: Random.uniform().linlin(0, 1, -1, 1).sample(),
-        dry: Random.uniform().linlin(0, 1, 0.8, 1.3).sample(),
-        wet: Random.uniform().linlin(0, 1, 0.15, 0.6).sample(),
-        output: Random.uniform().linlin(0, 1, 0.9, 1.35).sample(),
-      }),
-    ];
+    // Continuous axes — each space is a unique point in character space
+    const wetness   = Math.random();           // 0 = tight/dry,   1 = vast/drenched
+    const brightness = Math.random();          // 0 = dark/filtered, 1 = airy/open
+    const midPush   = Math.random() * 2 - 1;  // -1 = scooped,     +1 = middy/honky
 
-    const archetype = archetypes[Math.floor(Math.random() * archetypes.length)];
-    this.base = archetype();
+    // Reverb time: exponential 0.4 → 18s driven by wetness
+    const reverbTime = 0.4 * Math.pow(45, wetness);
+
+    // Wet/dry correlated with wetness
+    const wet = 0.3  + wetness * 1.6;          // 0.30 – 1.90
+    const dry = 0.85 - wetness * 0.75;         // 0.85 – 0.10
+
+    // Filter: log-spaced 350 → 18000 Hz, mostly driven by brightness
+    const filterFreq = 350 * Math.pow(51.4, brightness * 0.75 + Math.random() * 0.25);
+
+    // EQ: independent wide-range variation, high band biased by brightness
+    const eqLow  = (Math.random() * 2 - 1) * 18;
+    const eqMid  = midPush * 13 + (Math.random() * 2 - 1) * 5;
+    const eqHigh = (brightness - 0.5) * 30 + (Math.random() * 2 - 1) * 8;
+
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+    this.base = {
+      reverbTime,
+      eq: [clamp(eqLow, -20, 16), clamp(eqMid, -18, 18), clamp(eqHigh, -20, 20)],
+      filterFreq,
+      pannerX: 0,    // overwritten by engine at creation time
+      pannerZ: -0.866,
+      dry,
+      wet,
+      output: 0.85 + Math.random() * 0.55,
+    };
     return this;
   }
   
@@ -133,10 +110,15 @@ export class FullSpace extends Space {
         update_fn: this.filter.frequency.exponentialRampToValueAtTime,
         args: [this.base.filterFreq, this.ctx.currentTime + AR_TICK_SIZE],
       },
-      pannerPos: {
-        object: this.panner.pan,
-        update_fn: this.panner.pan.linearRampToValueAtTime,
-        args: [this.base.pannerPos, this.ctx.currentTime + AR_TICK_SIZE],
+      pannerX: {
+        object: this.panner.positionX,
+        update_fn: this.panner.positionX.linearRampToValueAtTime,
+        args: [this.base.pannerX, this.ctx.currentTime + AR_TICK_SIZE],
+      },
+      pannerZ: {
+        object: this.panner.positionZ,
+        update_fn: this.panner.positionZ.linearRampToValueAtTime,
+        args: [this.base.pannerZ, this.ctx.currentTime + AR_TICK_SIZE],
       },
       dry: {
         object: this.dryGain.gain,

@@ -34,18 +34,17 @@ async function boot() {
 
   await startAudio();
 
-  // 4 spaces in a loose quad, visually flipped front/rear:
-  // front-left, rear-left, rear-right, front-right
+  // 4 spaces: FL, FR, RL, RR  (Web Audio: -Z = front, +Z = rear)
   const W = window.innerWidth;
   const H = window.innerHeight * 0.68;
   const quadSpaces = [
-    { pan: -0.85, position: { x: W * 0.24, y: H * 0.62 } },
-    { pan: -0.35, position: { x: W * 0.24, y: H * 0.24 } },
-    { pan:  0.35, position: { x: W * 0.66, y: H * 0.24 } },
-    { pan:  0.85, position: { x: W * 0.66, y: H * 0.62 } },
+    { pan: -0.5,  panZ: -0.866, position: { x: W * 0.24, y: H * 0.24 } }, // FL
+    { pan:  0.5,  panZ: -0.866, position: { x: W * 0.66, y: H * 0.24 } }, // FR
+    { pan: -0.5,  panZ:  0.866, position: { x: W * 0.24, y: H * 0.62 } }, // RL
+    { pan:  0.5,  panZ:  0.866, position: { x: W * 0.66, y: H * 0.62 } }, // RR
   ];
   for (const s of quadSpaces) {
-    await addNode('space', { pan: s.pan, position: s.position, origin: 'startup-space' });
+    await addNode('space', { pan: s.pan, panZ: s.panZ, position: s.position, origin: 'startup-space' });
   }
 
   await addNode('voice', { weighted: true, weights: { sine: 1, formant: 0 }, origin: 'startup-sine' });

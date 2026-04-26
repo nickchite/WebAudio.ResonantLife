@@ -19,7 +19,8 @@ const CONTROL_TIME = 1000 / CONTROL_RATE;
 const DEBUG_AUDIO_GRAPH = import.meta.env.DEV && import.meta.env.VITE_DEBUG_AUDIO_GRAPH === '1';
 
 const LIFECYCLE_ENABLED = true;
-const LIFECYCLE_MUTATION_CHANCE = 0.55;
+const LIFECYCLE_MUTATION_CHANCE = 0.6;
+const LIFECYCLE_RANDOM_CHANCE = 0.2;  // independent: chance any spawn is fully random
 const LIFECYCLE_LIFESPAN_MIN_SEC = 8;
 const LIFECYCLE_LIFESPAN_MAX_SEC = 50;
 // Population above this per-type count compresses lifespans toward the minimum.
@@ -139,18 +140,18 @@ export function useResonantEngine(options) {
   function mutateBase(base, typeName) {
     const next = {
       ...base,
-      frequency: Math.max(40, (base.frequency ?? 220) * Random.uniform().linexp(0, 1, 0.93, 1.08).sample()),
-      gain: clamp01((base.gain ?? 0.7) * Random.uniform().linexp(0, 1, 0.9, 1.12).sample()),
-      attack: Math.max(0.005, (base.attack ?? 0.03) * Random.uniform().linexp(0, 1, 0.85, 1.2).sample()),
-      decay: Math.max(0.0, (base.decay ?? 0.08) * Random.uniform().linexp(0, 1, 0.85, 1.2).sample()),
-      sustain: Math.min(1.2, Math.max(0.1, (base.sustain ?? 0.8) * Random.uniform().linexp(0, 1, 0.88, 1.14).sample())),
-      release: Math.max(0.01, (base.release ?? 0.12) * Random.uniform().linexp(0, 1, 0.85, 1.25).sample()),
+      frequency: Math.max(40, (base.frequency ?? 220) * Random.uniform().linexp(0, 1, 0.7, 1.45).sample()),
+      gain: clamp01((base.gain ?? 0.7) * Random.uniform().linexp(0, 1, 0.6, 1.6).sample()),
+      attack: Math.max(0.005, (base.attack ?? 0.03) * Random.uniform().linexp(0, 1, 0.5, 2.2).sample()),
+      decay: Math.max(0.0, (base.decay ?? 0.08) * Random.uniform().linexp(0, 1, 0.5, 2.2).sample()),
+      sustain: Math.min(1.2, Math.max(0.1, (base.sustain ?? 0.8) * Random.uniform().linexp(0, 1, 0.6, 1.5).sample())),
+      release: Math.max(0.01, (base.release ?? 0.12) * Random.uniform().linexp(0, 1, 0.5, 2.5).sample()),
     };
 
     if (typeName === 'formant' && Array.isArray(base.formants)) {
       next.formants = base.formants.map((f, i) => ({
-        freq: Math.max(60, f.freq * Random.uniform().linexp(0, 1, 0.92, 1.1 + (i * 0.02)).sample()),
-        Q: Math.max(0.15, f.Q * Random.uniform().linexp(0, 1, 0.88, 1.15).sample()),
+        freq: Math.max(60, f.freq * Random.uniform().linexp(0, 1, 0.7, 1.45 + (i * 0.06)).sample()),
+        Q: Math.max(0.15, f.Q * Random.uniform().linexp(0, 1, 0.5, 2.0).sample()),
       }));
     }
 
@@ -274,7 +275,8 @@ export function useResonantEngine(options) {
     nextSpawnType = type === 'sine' ? 'formant' : 'sine';
 
     const parent = pickParentOfType(type);
-    const mutate = parent && Math.random() < LIFECYCLE_MUTATION_CHANCE;
+    const forceRandom = Math.random() < LIFECYCLE_RANDOM_CHANCE;
+    const mutate = !forceRandom && parent && Math.random() < LIFECYCLE_MUTATION_CHANCE;
 
     if (mutate) {
       const base = mutateBase(parent.node.base ?? {}, type);
@@ -614,9 +616,12 @@ export function useResonantEngine(options) {
     } else if (type === 'space') {
       node = SpaceFactory.create(ctx).randomize();
       node.connect(output);
-      const pan = options.pan !== undefined ? options.pan : pickPan(spaces.map((s) => s.base.pannerPos));
-      node.base.pannerPos = pan;
-      node.panner.pan.value = pan;
+      const panX = options.pan !== undefined ? options.pan : pickPan(spaces.map((s) => s.base.pannerX));
+      const panZ = options.panZ !== undefined ? options.panZ : node.base.pannerZ ?? -0.7;
+      node.base.pannerX = panX;
+      node.base.pannerZ = panZ;
+      node.panner.positionX.value = panX;
+      node.panner.positionZ.value = panZ;
       spaces.push(node);
     }
 
@@ -714,8 +719,8 @@ export function useResonantEngine(options) {
     const now = ctx.currentTime;
     spaces.forEach((space, i) => {
       const pan = n === 1 ? 0 : -1 + (2 * i) / (n - 1);
-      space.base.pannerPos = pan;
-      space.panner.pan.linearRampToValueAtTime(pan, now + rampTime);
+      space.base.pannerX = pan;
+      space.panner.positionX.linearRampToValueAtTime(pan, now + rampTime);
     });
   }
 
@@ -724,7 +729,7 @@ export function useResonantEngine(options) {
     const H = window.innerHeight * 0.68;
 
     if (type === 'space') {
-      const pan = node?.base?.pannerPos ?? 0;
+      const pan = node?.base?.pannerX ?? 0;
       const cx = W / 2 - 40;
       const cy = H * 0.72;
       const R = Math.min(W * 0.38, H * 0.6);
@@ -742,7 +747,7 @@ export function useResonantEngine(options) {
         const baseAngle = { top: -Math.PI / 2, right: 0, bottom: Math.PI / 2, left: Math.PI }[side];
         const jitterRad = (Math.random() * 2 - 1) * (Math.PI * 40 / 180);
         const angle = baseAngle + jitterRad;
-        const r = 100 + Math.random() * 50;
+        const r = 75 + Math.random() * 37;
         return {
           x: spacePos.x + Math.cos(angle) * r,
           y: spacePos.y + Math.sin(angle) * r,
