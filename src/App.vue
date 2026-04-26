@@ -45,6 +45,10 @@ onMounted(async () => {
   for (let i = 0; i < 4; i += 1) {
     await addNode('space', { origin: 'startup-space' });
   }
+
+  const voice = addNode('voice', { type: 'formant', coherence: 0.5, density: 0.5 });
+  const space = addNode('space', { coherence: 0.5, density: 0.5 });
+  connect(voice, space);
 });
 
 if (import.meta.hot) {

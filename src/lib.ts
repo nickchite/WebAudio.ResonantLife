@@ -49,6 +49,7 @@ class RandomCore {
 const distributions = {
   uniform: Math.random,
   normal,
+  truncnorm,
   exponential,
   gamma,
   gamma_tempo,
@@ -61,6 +62,7 @@ const transformers = {
   min: Math.min,
   max: Math.max,
   clamp,
+  quantize,
 } as const satisfies Record<string, Transform>;
 
 export type Random = RandomCore & {
@@ -178,8 +180,13 @@ export function clamp(x: number, min: number, max: number) {
     return Math.max(min, Math.min(max, x));
 }
 
-export function truncnorm(min: number, max: number) {
+export function truncnorm(variance: number, min: number = -1, max: number = 1) {
     const mean = (min + max) / 2;
-    const std = (max - min) / 8;
+    const std = (max - min) * variance;
     return clamp(jstat.normal.sample(mean, std), min, max);
+}
+
+export function quantize(value: number, step: number) {
+  if (step <= 0) return value;
+  return Math.max(step, Math.round(value / step) * step);
 }

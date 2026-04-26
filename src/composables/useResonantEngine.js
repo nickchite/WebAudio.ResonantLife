@@ -1,5 +1,6 @@
-import { Random, linexp } from '../lib.ts';
+import { Random, linexp, quantize } from '../lib.ts';
 import { Output } from '../nodes/misc.ts';
+import { random_formant_modulation_ratios } from '../nodes/formant.ts';
 import { FormantVoice, VoiceFactory } from '../nodes/voice.ts';
 import { SpaceFactory } from '../nodes/space.ts';
 import { ROOT_MOTION } from '../config/rootMotion.js';
@@ -100,11 +101,6 @@ export function useResonantEngine(options) {
     const c = Math.min(1, Math.max(0, coherence));
     const ratio = minStep / harmonicStep;
     return harmonicStep * Math.pow(ratio, 1 - c);
-  }
-
-  function quantizeToStep(freq, step) {
-    if (step <= 0) return freq;
-    return Math.max(step, Math.round(freq / step) * step);
   }
 
   function foldToRange(freq, min, max) {
@@ -217,8 +213,67 @@ export function useResonantEngine(options) {
     return Math.pow(2, semis / 12);
   }
 
-  function envelopeRatio(spread) {
-    return Random.uniform().linexp(0, 1, 1 / spread, spread).sample();
+  function envelopeSegments(voice, adsr) {
+    const baseAttack = voice.base?.attack ?? 0;
+    const baseDecay = voice.base?.decay ?? 0;
+    const baseRelease = voice.base?.release ?? 0;
+
+    const minAttack = baseAttack > 0 ? 0.005 : 0;
+    const minDecay = 0;
+    const minRelease = baseRelease > 0 ? 0.01 : 0;
+
+    const attack = Math.max(minAttack, baseAttack * (adsr.attack ?? 1));
+    const decay = Math.max(minDecay, baseDecay * (adsr.decay ?? 1));
+    const release = Math.max(minRelease, baseRelease * (adsr.release ?? 1));
+
+    return (
+      {
+        baseAttack,
+        baseDecay,
+        baseRelease,
+        minAttack,
+        minDecay,
+        minRelease,
+        attack,
+        decay,
+        release,
+        total: attack + decay + release,
+        minTotal: minAttack + minDecay + minRelease,
+      }
+    );
+  }
+
+  function constrainEnvelopeToTime(voice, adsr, maxTime) {
+    const segments = envelopeSegments(voice, adsr);
+    const budget = Math.max(0, maxTime - 0.001);
+
+    if (segments.total <= budget) return adsr;
+
+    const scalableAttack = Math.max(0, segments.attack - segments.minAttack);
+    const scalableDecay = Math.max(0, segments.decay - segments.minDecay);
+    const scalableRelease = Math.max(0, segments.release - segments.minRelease);
+    const scalableTotal = scalableAttack + scalableDecay + scalableRelease;
+
+    if (scalableTotal <= 0 || budget <= segments.minTotal) {
+      return {
+        ...adsr,
+        attack: segments.baseAttack > 0 ? segments.minAttack / segments.baseAttack : adsr.attack,
+        decay: segments.baseDecay > 0 ? segments.minDecay / segments.baseDecay : adsr.decay,
+        release: segments.baseRelease > 0 ? segments.minRelease / segments.baseRelease : adsr.release,
+      };
+    }
+
+    const scale = (budget - segments.minTotal) / scalableTotal;
+    const attack = segments.minAttack + (scalableAttack * scale);
+    const decay = segments.minDecay + (scalableDecay * scale);
+    const release = segments.minRelease + (scalableRelease * scale);
+
+    return {
+      ...adsr,
+      attack: segments.baseAttack > 0 ? attack / segments.baseAttack : adsr.attack,
+      decay: segments.baseDecay > 0 ? decay / segments.baseDecay : adsr.decay,
+      release: segments.baseRelease > 0 ? release / segments.baseRelease : adsr.release,
+    };
   }
 
   function buildVoiceDelta(voice, voiceCoherence, isFormant, densityBpm) {
@@ -228,46 +283,44 @@ export function useResonantEngine(options) {
     const jitterSpread = lerp(2.2, 1.03, c);
     const maxFreqSemis = lerp(7.0, 0.6, cPitch);
     const gainSpread = lerp(1.8, 1.1, c);
-    const envSpread = isFormant
-      ? lerp(3.0, 1.08, c)
-      : lerp(1.7, 1.05, c);
+    const envSpread = 5.0;
     const quantizeStep = coherenceStepSize(cPitch, harmonicRootHz, 0.25);
 
     const baseTempo = densityBpm;
     const baseShape = 0.5;
     const shapeNow = Math.max(0.1, baseShape * shapeMul);
     const baseTime = Random.gamma_tempo(baseTempo, shapeNow).sample();
-    const time = baseTime * Random.uniform().linexp(0, 1, 1 / jitterSpread, jitterSpread).sample();
 
     const rawFreq = voice.base.frequency * ratioFromSemitoneSpread(maxFreqSemis);
-    const finalFreq = quantizeToStep(rawFreq, quantizeStep);
+    const finalFreq = quantize(rawFreq, quantizeStep);
+    
+    const adsr = {
+      attack: Random.truncnorm(1).quantize(c - 9/10).linexp(-1, 1, 0.001, 10).sample(),
+      decay: Random.truncnorm(1).quantize(c - 9/10).linexp(-1, 1, 0.005, 10).sample(),
+      sustain: lerp(Random.uniform().linlin(0, 1, 0.4, 1.25).sample(), 1, c),
+      release: Random.truncnorm(1).quantize(c - 9/10).linexp(-1, 1, 0.005, 10).sample(),
+    }
+
+    const sampledTime = baseTime * Random.uniform().linexp(0, 1, 1 / jitterSpread, jitterSpread).sample();
+    const constrainedAdsr = constrainEnvelopeToTime(voice, adsr, sampledTime);
+    const constrainedEnvelope = envelopeSegments(voice, constrainedAdsr);
+    const time = Math.max(sampledTime, constrainedEnvelope.minTotal + 0.001);
 
     const delta = {
       time,
       frequency: finalFreq / voice.base.frequency,
       gain: Random.uniform().linexp(0, 1, 1 / gainSpread, gainSpread).sample(),
-      attack: envelopeRatio(envSpread),
-      decay: envelopeRatio(envSpread),
-      sustain: lerp(Random.uniform().linlin(0, 1, 0.4, 1.25).sample(), 1, c),
-      release: envelopeRatio(envSpread),
+      ...constrainedAdsr,
     };
 
     if (isFormant) {
-      const formantFreqSpread = lerp(4.2, 1.18, cPitch);
-      const formantQSpread = lerp(3.4, 1.12, cPitch);
-      const formantCount = Array.isArray(voice.base?.formants)
-        ? voice.base.formants.length
-        : 3;
+      const formantCount = voice.base?.formants?.length ?? voice.filters?.length ?? 0;
+      const formantFreqSpread = 1.6;
+      const formantQSpread = 6.0;
       return {
         ...delta,
-        formantFrequency: Array.from({ length: formantCount }, (_, i) => (
-          Random.uniform().linexp(0, 1, 1 / formantFreqSpread, formantFreqSpread).sample()
-          * Random.uniform().linexp(0, 1, 0.9, 1.12 + (i * 0.06)).sample()
-        )),
-        formantQ: Array.from({ length: formantCount }, (_, i) => (
-          Random.uniform().linexp(0, 1, 1 / formantQSpread, formantQSpread).sample()
-          * Random.uniform().linexp(0, 1, 0.92, 1.1 + (i * 0.04)).sample()
-        )),
+        formantFrequency: random_formant_modulation_ratios(formantCount, formantFreqSpread),
+        formantQ: random_formant_modulation_ratios(formantCount, formantQSpread),
       };
     }
 
@@ -281,6 +334,7 @@ export function useResonantEngine(options) {
     output.master.gain.value = 1;
 
     updateInterval = setInterval(update, CONTROL_TIME);
+    
   }
 
   async function ensureAudioRunning() {
