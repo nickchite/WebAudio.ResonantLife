@@ -582,10 +582,44 @@ export function useResonantEngine(options) {
     }
   }
 
+  // Weather FX global event state
+  let weatheredSpace = null;
+  let weatherActive = false;
+  let weatherCooldown = 0;
+
   function update() {
     if (!ctx || !flow.value?.graph) return;
 
     updateHarmonicRootScheduler();
+
+    // --- Weather FX global event logic ---
+    // Only one space can have weather at a time
+    const WEATHER_ON_CHANCE = 0.003; // ~0.3% per tick
+    const WEATHER_OFF_CHANCE = 0.002; // ~0.2% per tick
+    const WEATHER_RAMP_SEC = 1.0;
+    const now = ctx.currentTime;
+
+    // Weather ON
+    if (!weatherActive && Math.random() < WEATHER_ON_CHANCE && spaces.length > 0 && now > weatherCooldown) {
+      // Pick a random space
+      const idx = Math.floor(Math.random() * spaces.length);
+      const space = spaces[idx];
+      if (typeof space.enableWeather === 'function') {
+        space.enableWeather(WEATHER_RAMP_SEC);
+        weatheredSpace = space;
+        weatherActive = true;
+        weatherCooldown = now + WEATHER_RAMP_SEC + 2.5;
+      }
+    }
+    // Weather OFF
+    if (weatherActive && weatheredSpace && Math.random() < WEATHER_OFF_CHANCE && now > weatherCooldown) {
+      if (typeof weatheredSpace.disableWeather === 'function') {
+        weatheredSpace.disableWeather(WEATHER_RAMP_SEC);
+      }
+      weatheredSpace = null;
+      weatherActive = false;
+      weatherCooldown = now + WEATHER_RAMP_SEC + 2.5;
+    }
 
     voices.forEach((voice) => {
       const isFormant = voice instanceof FormantVoice;
@@ -598,11 +632,32 @@ export function useResonantEngine(options) {
 
       voice.update(buildVoiceDelta(voice, voiceCoherence, isFormant, voiceDensity));
     });
+
+    // Update each space node and set weatherWet for visual feedback
     spaces.forEach((space) => {
       space.update({
         time: Random.exponential(1 / 10).sample(),
       });
     });
+
+    // Animate weatherWet for smooth color transitions
+    function updateWeatherWet() {
+      for (const space of spaces) {
+        const wet = space.weatherGain ? space.weatherGain.gain.value : 0;
+        for (const [id, node] of flow.value.graph.entries()) {
+          if (node === space) {
+            const n = flow.value.getNode?.(id);
+            if (n && n.data) {
+              n.data.weatherWet = wet;
+            }
+          }
+        }
+      }
+      requestAnimationFrame(updateWeatherWet);
+    }
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(updateWeatherWet);
+    }
 
     void runLifecycle();
   }

@@ -1,7 +1,10 @@
 import { AR_TICK_SIZE, Node } from './node';
 import { Comb, AllPass } from './misc.ts';
 
+
 import * as Tone from 'tone';
+import { Weather } from './weather';
+  weather: Weather;
 
 export abstract class Space extends Node {
   constructor(ctx: AudioContext, base?: any) { super(ctx, base); }
@@ -19,6 +22,10 @@ export class FullSpace extends Space {
   dryGain: Tone.Gain;
   wetGain: Tone.Gain;
   outputGain: Tone.Gain;
+  weatherGain: Tone.Gain;
+  finalOutputGain: Tone.Gain;
+  weather: Weather | null = null;
+  _weatherRamping: boolean = false;
 
   constructor(ctx: AudioContext, base?: any) {
     super(ctx, base);
@@ -49,6 +56,8 @@ export class FullSpace extends Space {
     this.dryGain = new Tone.Gain(this.base.dry);
     this.wetGain = new Tone.Gain(this.base.wet);
     this.outputGain = new Tone.Gain(this.base.output);
+    this.weatherGain = new Tone.Gain(0);
+    this.finalOutputGain = new Tone.Gain(this.base.output);
 
     this.eq.connect(this.dryGain);
     this.eq.connect(this.reverb);
@@ -56,6 +65,41 @@ export class FullSpace extends Space {
 
     this.dryGain.connect(this.outputGain);
     this.wetGain.connect(this.outputGain);
+
+    // Weather is not created until enabled
+    this.outputGain.connect(this.finalOutputGain);
+    this.weatherGain.connect(this.finalOutputGain);
+  }
+
+  enableWeather(rampTime = 1.0) {
+    if (!this.weather) {
+      this.weather = new Weather(this.ctx);
+      this.outputGain.connect(this.weather.input());
+      this.weather.output().connect(this.weatherGain);
+    }
+    const now = this.ctx.currentTime;
+    this.weatherGain.gain.cancelAndHoldAtTime(now);
+    this.weatherGain.gain.linearRampToValueAtTime(1, now + rampTime);
+    this._weatherRamping = true;
+    setTimeout(() => { this._weatherRamping = false; }, rampTime * 1000);
+  }
+
+  disableWeather(rampTime = 1.0) {
+    if (!this.weather) return;
+    const now = this.ctx.currentTime;
+    this.weatherGain.gain.cancelAndHoldAtTime(now);
+    this.weatherGain.gain.linearRampToValueAtTime(0, now + rampTime);
+    this._weatherRamping = true;
+    // Dispose weather after ramp down
+    setTimeout(() => {
+      if (this.weather) {
+        try { this.outputGain.disconnect(this.weather.input()); } catch {}
+        try { this.weather.output().disconnect(this.weatherGain); } catch {}
+        this.weather.dispose();
+        this.weather = null;
+      }
+      this._weatherRamping = false;
+    }, rampTime * 1000 + 50);
   }
   
   randomize() {
@@ -139,7 +183,7 @@ export class FullSpace extends Space {
   }
   
   input() { return this.panner; }
-  output() { return this.outputGain; }
+  output() { return this.finalOutputGain; }
 
   dispose() {
     try { this.panner.disconnect(); } catch {}

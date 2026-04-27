@@ -1,12 +1,9 @@
-<script setup lang="ts">
-import { Position, Handle } from '@vue-flow/core'
-import type { NodeProps } from '@vue-flow/core'
-
-const props = defineProps<NodeProps>()
-</script>
-
 <template>
-  <div class="rl-node" :class="[props.type, props.data?.label?.toLowerCase()]">
+  <div
+    class="rl-node"
+    :class="[props.type, props.data?.label?.toLowerCase()]"
+    :style="spaceColorStyle"
+  >
     <span>{{ props.data?.label ?? props.type }}</span>
     <template v-if="props.type === 'voice'">
       <Handle id="source-top"    type="source" :position="Position.Top"    :style="{ left: `${48 + (props.data?.jitter?.sourceTop    ?? 0)}%` }" />
@@ -23,6 +20,34 @@ const props = defineProps<NodeProps>()
   </div>
 </template>
 
+<script setup lang="ts">
+import { computed } from 'vue';
+import { Position, Handle } from '@vue-flow/core';
+import type { NodeProps } from '@vue-flow/core';
+
+const props = defineProps<NodeProps>();
+
+// Compute color ramp for space node: purple (#2e1065) to red (#dc2626)
+const spaceColorStyle = computed(() => {
+  if (props.type !== 'space') return {};
+  console.log('Calculating space color style with weatherWet:', props.data?.node?.weatherGain?.gain?.value);
+  const wet = Number(props.data?.node?.weatherGain?.gain?.value ?? 0); // 0 = dry, 1 = fully wet
+  // Interpolate background and border color
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  // #2e1065 (46,16,101) to #dc2626 (220,38,38)
+  const bgR = Math.round(lerp(46, 220, wet));
+  const bgG = Math.round(lerp(16, 38, wet));
+  const bgB = Math.round(lerp(101, 38, wet));
+  const borderR = Math.round(lerp(167, 220, wet));
+  const borderG = Math.round(lerp(139, 38, wet));
+  const borderB = Math.round(lerp(250, 38, wet));
+  return {
+    background: `rgb(${bgR},${bgG},${bgB})`,
+    borderColor: `rgb(${borderR},${borderG},${borderB})`,
+    transition: 'background 0.3s, border-color 0.3s',
+  };
+});
+</script>
 <style scoped>
 .rl-node {
   display: flex;

@@ -1,4 +1,4 @@
-import { Node } from './node';
+import { AR_TICK_SIZE, Node } from './node';
 import * as Tone from 'tone';
 
 export class Output extends Node {
@@ -160,9 +160,10 @@ export class ADSR extends Node {
   }
   
   trig(time: number) {
-    const now = this.ctx.currentTime;
+    const now = this.ctx.currentTime + AR_TICK_SIZE;
     this.gain.gain.cancelAndHoldAtTime(now);
     // Ramp to zero by `time` so the attack always starts from silence.
+    this.gain.gain.setValueAtTime(this.gain.gain.value, time);
     this.gain.gain.linearRampToValueAtTime(0, time);
     this.gain.gain.linearRampToValueAtTime(1, time + this.attack);
     this.gain.gain.linearRampToValueAtTime(this.sustain, time + this.attack + this.decay);
